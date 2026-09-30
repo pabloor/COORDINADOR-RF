@@ -1,0 +1,25 @@
+COORDINADOR RF
+
+MAC
+  1. Arrastra "Coordinador RF.app" a la carpeta Aplicaciones.
+  2. Ábrela como cualquier app (Launchpad, Spotlight o el Dock).
+     La primera vez el Mac avisará de que es de un desarrollador no identificado:
+     clic derecho sobre la app > Abrir > Abrir. Si no aparece esa opción, ve a
+     Ajustes del Sistema > Privacidad y seguridad y pulsa "Abrir igualmente".
+     Si pregunta si Python puede aceptar conexiones de red, acepta (hace falta
+     para los receptores Sennheiser).
+  3. La app se abre en su propia ventana (la primera vez tarda un poco más porque
+     prepara la ventana). Cuando termines, ciérrala: todo se apaga solo.
+
+  Si ya usabas la app en Safari: allí, Proyecto > Copiar proyecto; aquí,
+  Proyecto > Pegar proyecto. Las IPs de los receptores van dentro del proyecto.
+
+  Necesita Python 3 (https://www.python.org/downloads/). Si falta, la app lo avisa.
+  Si algo falla, los detalles están en ~/Library/Logs/CoordinadorRF.log
+
+WINDOWS
+  Abre la carpeta Windows y haz doble clic en "Iniciar Coordinador RF.bat".
+  Se abre en una ventana propia de Edge. Al cerrarla, todo se apaga solo.
+
+Tus proyectos y receptores se guardan en la propia app y se conservan al
+actualizarla.
