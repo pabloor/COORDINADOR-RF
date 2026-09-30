@@ -1,0 +1,55 @@
+name: Compilar app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: ["claude/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Compilar Coordinador RF.app
+        run: |
+          pyinstaller --noconfirm --windowed --name "Coordinador RF" \
+            --icon mac/icono.icns \
+            --osx-bundle-identifier local.coordinador-rf \
+            --add-data "coordinador-rf.html:." --add-data "mac/icono.png:." \
+            puente-rf.py
+          # Firma local (sin pagar cuenta de desarrollador): hace que macOS la trate como una app coherente.
+          codesign --force --deep -s - "dist/Coordinador RF.app"
+          ditto -c -k --keepParent "dist/Coordinador RF.app" "Coordinador-RF-Mac.zip"
+      - uses: actions/upload-artifact@v4
+        with: { name: Coordinador-RF-Mac, path: Coordinador-RF-Mac.zip }
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with: { files: Coordinador-RF-Mac.zip }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt pillow
+      - name: Compilar Coordinador RF.exe
+        shell: bash
+        run: |
+          python -c "from PIL import Image; Image.open('mac/icono.png').save('icono.ico', sizes=[(256,256),(64,64),(32,32),(16,16)])"
+          pyinstaller --noconfirm --onefile --windowed --name "Coordinador RF" \
+            --icon icono.ico \
+            --add-data "coordinador-rf.html;." --add-data "mac/icono.png;." \
+            puente-rf.py
+      - uses: actions/upload-artifact@v4
+        with: { name: Coordinador-RF-Windows, path: "dist/Coordinador RF.exe" }
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with: { files: "dist/Coordinador RF.exe" }

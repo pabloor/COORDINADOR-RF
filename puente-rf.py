@@ -43,7 +43,8 @@ except ImportError:
 PORT = 8765
 LOCK = threading.RLock()
 DEVICES = {}  # id -> Driver
-HERE = os.path.dirname(os.path.abspath(__file__))
+FROZEN = getattr(sys, "frozen", False)  # empaquetado como app (PyInstaller)
+HERE = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
 
 
 def now():
@@ -1238,7 +1239,17 @@ def main():
     ap.add_argument("--ventana", action="store_true", help="abrir la app en su propia ventana en vez del navegador")
     ap.add_argument("--auto-cerrar", type=int, default=0, metavar="SEGUNDOS",
                     help="apagarse cuando pasen estos segundos sin la app abierta en ningún navegador")
+    if FROZEN and len(sys.argv) == 1:
+        sys.argv.append("--ventana")  # como app: doble clic y se abre su ventana
     a = ap.parse_args()
+    if FROZEN or sys.stdout is None or sys.stderr is None:
+        # Sin consola (app de ventana): los mensajes van a un registro en vez de perderse o romper print().
+        try:
+            log = open(os.path.join(config_dir(), "CoordinadorRF.log"), "a", encoding="utf-8", buffering=1)
+            sys.stdout = sys.stderr = log
+            print(f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} ===", flush=True)
+        except OSError:
+            pass
     url = f"http://127.0.0.1:{a.puerto}"
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", a.puerto), Handler)
