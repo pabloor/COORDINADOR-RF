@@ -37,7 +37,17 @@ jobs:
         with: { name: Coordinador-RF-Mac, path: Coordinador-RF-Mac.zip }
       - if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
-        with: { files: Coordinador-RF-Mac.zip }
+        with:
+          files: Coordinador-RF-Mac.zip
+          body: |
+            **Mac:** descarga `Coordinador-RF-Mac.zip`, descomprime y arrastra `Coordinador RF.app` a Aplicaciones
+            (sustituye la anterior; tus proyectos se conservan). La primera vez, clic derecho → Abrir.
+            Si pregunta por conexiones de red, acepta: hace falta para los receptores y el AD600.
+
+            **Windows:** descarga `Coordinador RF.exe` y haz doble clic.
+
+            Novedades: importar receptores de red a la coordinación, enlazar canales virtuales y enviar frecuencias,
+            y analizador de espectro Shure AD600 por red (experimental, sin probar con equipo real).
 
   windows:
     runs-on: windows-latest
