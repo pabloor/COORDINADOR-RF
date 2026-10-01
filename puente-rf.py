@@ -28,7 +28,7 @@ la carpeta de configuración del usuario: en Mac, ~/Library/Application Support/
 desde el propio puente se rellena sola. Sin clave nadie puede leer ni cambiar nada.
 Solo biblioteca estándar de Python 3.8+.
 """
-import argparse, errno, ipaddress, json, shutil, os, queue, random, re, secrets, socket, sys, threading, time, urllib.request, webbrowser
+import argparse, errno, ipaddress, json, shutil, os, queue, random, re, secrets, signal, socket, sys, threading, time, urllib.request, webbrowser
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -566,7 +566,142 @@ class TinySA(Analyzer):
             self.read_until(b"ch> ", 3, bytes(data[end + 1:]))
 
 
-AN_TYPES = {"rfe": RFExplorer, "tinysa": TinySA}
+class AD600(Analyzer):
+    """Shure AD600 por red (UDP 57383, sin USB). Usa el motor de código abierto de la carpeta ad600/ (MIT,
+    mbsound/AD600-Web-Based-Spectrum-Scan): un subproceso mantiene la sesión con el equipo y este hilo
+    convierte sus barridos en eventos del analizador. El AD600 solo admite un controlador de escaneo a la
+    vez: hay que cerrar Wireless Workbench. Al desconectar hay que dejar que libere su sesión (goodbye)."""
+    BAND = (174000, 2000000)  # kHz
+
+    @staticmethod
+    def ensure_modules():
+        os.environ.setdefault("AD600_ENGINE_SCRATCH", os.path.join(config_dir(), "ad600"))
+        d = os.path.join(HERE, "ad600")
+        if os.path.isdir(d) and d not in sys.path:
+            sys.path.insert(0, d)
+        import ad600_bridge, ad600_discovery, ad600_engine
+        return ad600_bridge, ad600_discovery, ad600_engine
+
+    @staticmethod
+    def curve_mask(ant):
+        """CURVE_SELECT: 0x7E = las seis antenas; una sola (A=1 … F=6) = 1 << n."""
+        try:
+            n = int(ant)
+        except (TypeError, ValueError):
+            return 0x7E
+        return 1 << n if 1 <= n <= 6 else 0x7E
+
+    def scan_cfg(self):
+        return {"startHz": int(self.cfg["start"]) * 1000, "stopHz": int(self.cfg["stop"]) * 1000,
+                "rbwHz": int(self.cfg.get("rbw") or 350) * 1000, "curveMask": self.curve_mask(self.cfg.get("ant")),
+                "repeat": 0xFF}
+
+    def find_device(self, disc):
+        host = str(self.cfg.get("host") or "").strip()
+        if host:
+            ifd = disc.iface_for_host(host)
+            if not ifd:
+                raise RuntimeError(f"Ninguna conexión de red de este ordenador está en la misma red que {host}.")
+            ifaces = [ifd]
+        else:
+            ifaces = [i for i in disc.list_interfaces() if i.get("ipv4") and not str(i["ipv4"]).startswith("127.")]
+        if not ifaces:
+            raise RuntimeError("Este ordenador no tiene ninguna conexión de red activa.")
+
+        def probe(i):
+            try:
+                return i, disc.discover(i, timeout=4)
+            except Exception:
+                return i, None
+        with ThreadPoolExecutor(max_workers=len(ifaces)) as ex:
+            found = [(i, r) for i, r in ex.map(probe, ifaces) if r]
+        if host:
+            found = [(i, r) for i, r in found if r.get("device_ip") == host] or found
+        if not found:
+            raise RuntimeError("No encuentro ningún AD600 en la red. Comprueba que está encendido y en la misma red "
+                               "(sin aislamiento entre dispositivos) y que el Mac ha permitido las conexiones de red locales.")
+        ifd, dev = found[0]
+        if not dev.get("device_cid"):
+            raise RuntimeError(f"Veo un AD600 en {dev.get('device_ip')} pero no se identifica por la red. "
+                               "Revisa que el Mac y el AD600 estén en la misma red.")
+        return ifd, dev
+
+    def open(self):
+        self.br_mod, disc, eng_mod = self.ensure_modules()
+        self.status("Buscando el AD600 en la red…")
+        ifd, dev = self.find_device(disc)
+        self.ip = dev.get("device_ip")
+        self.br = self.br_mod.Bridge(port=0)  # solo ensambla barridos: su servidor HTTP no se arranca
+        self.eng = eng_mod.Engine(bridge=self.br)
+        self.br.on_config_change = self.eng.apply_config
+        self.br.apply_configuration(self.scan_cfg())
+        self.eng.start(dev, ifd)
+        self.br.sweep_start()
+        self.rearm_until = 0.0
+        self.status(f"AD600 encontrado en {self.ip}. Conectando: tarda entre 20 y 30 s…")
+
+    def describe(self):
+        st, tr = self.eng.status(), self.br.trace
+        if st.get("blocked"):
+            return "", ("El AD600 tiene el escaneo ocupado por otro controlador (Wireless Workbench u otro programa) "
+                        "o por una sesión anterior. Ciérralo y, si sigue igual, apaga y enciende el AD600.")
+        if not st.get("running") and now() > self.rearm_until:
+            return "", "Se ha perdido la conexión con el AD600. Pulsa Desconectar y vuelve a conectar."
+        if not tr:
+            if now() < self.rearm_until:
+                return f"AD600 {self.ip}: aplicando el cambio, se reconecta (20-30 s)…", ""
+            return f"AD600 {self.ip}: {st.get('note') or 'conectando'}… (la primera vez tarda entre 20 y 30 s)", ""
+        rbw = int(tr["stepHz"] / 1000)
+        pct = tr.get("coveragePct", 0)
+        n = self.curve_mask(self.cfg.get("ant")).bit_length() - 1
+        ant = f"antena {'ABCDEF'[n - 1]}" if self.curve_mask(self.cfg.get("ant")) != 0x7E else "todas las antenas"
+        return (f"AD600 {self.ip}: {tr['startHz'] / 1e6:.1f}–{tr['stopHz'] / 1e6:.1f} MHz, {rbw} kHz por punto, {ant}."
+                + ("" if tr.get("coverageComplete") else f" Completando el primer barrido: {pct} %."), "")
+
+    def goodbye(self):
+        try:
+            self.eng.stop()  # desconexión limpia: libera la sesión de escaneo del AD600
+        except Exception:
+            pass
+
+    def loop(self):
+        last, t_pub, last_txt = -1, 0.0, None
+        while not self.halt.is_set():
+            changed = False
+            try:
+                while True:
+                    self.cfg.update(self.cmdq.get_nowait())
+                    changed = True
+            except queue.Empty:
+                pass
+            if changed:
+                self.rearm_until = now() + 90  # cambia rango, RBW o antenas: el motor se reconecta solo
+                self.br.apply_configuration(self.scan_cfg())
+            tr = self.br.trace
+            if tr and tr["sweepId"] != last and now() - t_pub >= 0.25:
+                last, t_pub = tr["sweepId"], now()
+                self.sweep(tr["startHz"] / 1000, tr["stopHz"] / 1000, tr["amplitudesDbm"])
+            txt = self.describe()
+            if txt != last_txt:
+                last_txt = txt
+                self.status(*txt)
+            time.sleep(0.1)
+
+
+AN_TYPES = {"rfe": RFExplorer, "tinysa": TinySA, "ad600": AD600}
+AN_THREADS = []  # hilos de analizador lanzados: al salir se espera a que se despidan
+
+
+def analyzer_shutdown(wait=8.0):
+    """Para el analizador y espera a que termine de despedirse. El AD600 tiene que liberar su sesión de
+    escaneo; si se mata de golpe se queda ocupado hasta apagarlo y encenderlo."""
+    try:
+        analyzer_cmd({"action": "stop"})
+    except Exception:
+        pass
+    t0 = now()
+    for t in list(AN_THREADS):
+        t.join(max(0.1, wait - (now() - t0)))
 
 
 def analyzer_cmd(body):
@@ -580,29 +715,40 @@ def analyzer_cmd(body):
         an_publish({"type": "status", "info": "Analizador desconectado.", "error": ""})
         return
     if act == "range":
-        cfg = {k: body[k] for k in ("start", "stop", "points") if k in body}
+        cfg = {k: body[k] for k in ("start", "stop", "points", "rbw", "ant") if k in body}
         if ANALYZER:
             ANALYZER.update(cfg)
         return
     if act != "start":
         raise ValueError("acción desconocida")
-    if serial is None:
-        raise ValueError("Falta el módulo pyserial. Instálalo con: pip3 install pyserial (y vuelve a arrancar el puente)")
     kind, port = body.get("type"), str(body.get("port") or "")
     if kind not in AN_TYPES:
         raise ValueError("tipo de analizador desconocido")
-    known = [p["device"] for p in list_serial()]
-    if port not in known:
-        raise ValueError("ese puerto no está conectado. Pulsa Buscar puertos")
     start, stop = int(body["start"]), int(body["stop"])
-    if not 1000 <= start < stop <= 7000000:
-        raise ValueError("rango de frecuencias no válido")
+    if kind == "ad600":
+        lo, hi = AD600.BAND
+        if not lo <= start < stop <= hi:
+            raise ValueError("el AD600 cubre de 174 a 2000 MHz")
+        if int(body.get("rbw") or 350) not in (50, 100, 350, 900):
+            raise ValueError("la resolución del AD600 puede ser 50, 100, 350 o 900 kHz")
+        cfg = {"start": start, "stop": stop, "rbw": int(body.get("rbw") or 350), "ant": str(body.get("ant") or "all"),
+               "host": str(body.get("host") or "")}
+    else:
+        if serial is None:
+            raise ValueError("Falta el módulo pyserial. Instálalo con: pip3 install pyserial (y vuelve a arrancar el puente)")
+        known = [p["device"] for p in list_serial()]
+        if port not in known:
+            raise ValueError("ese puerto no está conectado. Pulsa Buscar puertos")
+        if not 1000 <= start < stop <= 7000000:
+            raise ValueError("rango de frecuencias no válido")
+        cfg = {"port": port, "start": start, "stop": stop, "points": body.get("points"),
+               "rfePts": body.get("rfePts"), "tiny": str(body.get("tiny") or "auto")}
     analyzer_cmd({"action": "stop"})
-    a = AN_TYPES[kind]({"port": port, "start": start, "stop": stop, "points": body.get("points"),
-                        "rfePts": body.get("rfePts"), "tiny": str(body.get("tiny") or "auto")})
+    a = AN_TYPES[kind](cfg)
     with LOCK:
         ANALYZER = a
-    an_publish({"type": "status", "info": "Abriendo el puerto del analizador…", "error": ""})
+        AN_THREADS[:] = [t for t in AN_THREADS if t.is_alive()] + [a]
+    an_publish({"type": "status", "info": "Abriendo el analizador…" if kind == "ad600" else "Abriendo el puerto del analizador…", "error": ""})
     a.start()
 
 
@@ -900,11 +1046,7 @@ def watchdog(idle):
             n, since = SSE_CLIENTS, IDLE_SINCE
         if n == 0 and now() - since > idle:
             print("La app lleva un rato cerrada: el puente se apaga.", flush=True)
-            try:
-                analyzer_cmd({"action": "stop"})
-                time.sleep(0.5)
-            except Exception:
-                pass
+            analyzer_shutdown()
             os._exit(0)
 
 
@@ -1291,11 +1433,7 @@ def main():
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         if run_window(url):
             print("Ventana cerrada: el puente se apaga.", flush=True)
-            try:
-                analyzer_cmd({"action": "stop"})
-                time.sleep(0.5)
-            except Exception:
-                pass
+            analyzer_shutdown()
             os._exit(0)
         open_app_window(url)
         a.auto_cerrar = a.auto_cerrar or 90
@@ -1307,6 +1445,7 @@ def main():
                 time.sleep(3600)
         except KeyboardInterrupt:
             print("\nPuente detenido.")
+            analyzer_shutdown()
         return
     if a.auto_cerrar > 0:
         print(f"Se apagará solo {a.auto_cerrar} s después de cerrar la app en el navegador.")
@@ -1321,7 +1460,33 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nPuente detenido.")
+        analyzer_shutdown()
+
+
+def run_ad600_console():
+    """Reentrada: el motor del AD600 lanza su consola como `<este programa> -u ad600_console.py …`. En la app
+    empaquetada ese programa soy yo, así que en vez de abrir la app se ejecuta la consola."""
+    d = os.path.join(HERE, "ad600")
+    if os.path.isdir(d):
+        sys.path.insert(0, d)
+    sys.argv = sys.argv[2:]  # [ad600_console.py, segundos, fichero de órdenes, registro]
+    if sys.stdout is None:
+        sys.stdout = os.fdopen(1, "w", buffering=1, encoding="utf-8", errors="replace")
+    ppid = os.getppid()
+
+    def guard():  # si el puente muere sin despedirse, cerrar la sesión limpiamente en vez de dejarla colgada
+        while True:
+            time.sleep(1.0)
+            if os.getppid() != ppid:
+                os.kill(os.getpid(), signal.SIGINT)
+                return
+    threading.Thread(target=guard, daemon=True).start()
+    import ad600_console
+    ad600_console.main()
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) >= 3 and sys.argv[1] == "-u" and os.path.basename(sys.argv[2]) == "ad600_console.py":
+        run_ad600_console()
+    else:
+        main()

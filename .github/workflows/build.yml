@@ -12,6 +12,7 @@ permissions:
 jobs:
   mac:
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,7 +24,12 @@ jobs:
             --icon mac/icono.icns \
             --osx-bundle-identifier local.coordinador-rf \
             --add-data "coordinador-rf.html:." --add-data "mac/icono.png:." \
+            --paths ad600 --hidden-import ad600_bridge --hidden-import ad600_console --hidden-import ad600_discovery --hidden-import ad600_engine --hidden-import ad600_native --hidden-import paths \
             puente-rf.py
+          # Prueba: el motor del AD600 se lanza como subproceso de la propia app. Debe ejecutar su consola y salir (código 0).
+          mkdir -p smoke && perl -e 'alarm shift; exec @ARGV' 90 \
+            "dist/Coordinador RF.app/Contents/MacOS/Coordinador RF" -u /x/ad600_console.py 3 smoke/cmd.txt smoke/out.log | tee smoke/stdout.txt
+          grep -q "ad600_console" smoke/stdout.txt
           # Firma local (sin pagar cuenta de desarrollador): hace que macOS la trate como una app coherente.
           codesign --force --deep -s - "dist/Coordinador RF.app"
           ditto -c -k --keepParent "dist/Coordinador RF.app" "Coordinador-RF-Mac.zip"
@@ -35,6 +41,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,6 +54,7 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed --name "Coordinador RF" \
             --icon icono.ico \
             --add-data "coordinador-rf.html;." --add-data "mac/icono.png;." \
+            --paths ad600 --hidden-import ad600_bridge --hidden-import ad600_console --hidden-import ad600_discovery --hidden-import ad600_engine --hidden-import ad600_native --hidden-import paths \
             puente-rf.py
       - uses: actions/upload-artifact@v4
         with: { name: Coordinador-RF-Windows, path: "dist/Coordinador RF.exe" }

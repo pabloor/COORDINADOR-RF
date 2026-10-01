@@ -341,7 +341,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 <section class="view" id="viewLive" hidden>
   <div class="bar">
     <label class="f">Analizador<select id="lvSrc">
-      <option value="sim">Simulador</option><option value="rfe">RF Explorer</option><option value="tinysa">tinySA</option>
+      <option value="sim">Simulador</option><option value="rfe">RF Explorer</option><option value="tinysa">tinySA</option><option value="ad600">Shure AD600 (red)</option>
     </select></label>
     <label class="chk" id="lvViaW"><input type="checkbox" id="lvVia">A través del puente</label>
     <label class="f" id="lvPortW">Puerto<select id="lvPort"><option value="">Pulsa Buscar puertos</option></select></label>
@@ -352,6 +352,9 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <button class="btn small" id="lvFit">Usar rango de la coordinación</button>
     <label class="f" id="lvPtsW">Puntos<input type="number" min="16" max="3000" step="1" id="lvPts"></label>
     <label class="f" id="lvRfePtsW">Puntos<select id="lvRfePts"><option value="auto">Los del equipo</option><option>240</option><option>512</option><option>1024</option><option>2048</option><option>4096</option></select></label>
+    <label class="f" id="lvAdRbwW">Resolución<select id="lvAdRbw"><option value="50">50 kHz</option><option value="100">100 kHz</option><option value="350">350 kHz</option><option value="900">900 kHz</option></select></label>
+    <label class="f" id="lvAdAntW">Antenas<select id="lvAdAnt"><option value="all">Todas</option><option value="1">A</option><option value="2">B</option><option value="3">C</option><option value="4">D</option><option value="5">E</option><option value="6">F</option></select></label>
+    <label class="f" id="lvAdHostW">IP del AD600 (opcional)<input type="text" id="lvAdHost" placeholder="Se busca sola" spellcheck="false"></label>
     <label class="f" id="lvTinyW">Modelo<select id="lvTiny"><option value="auto">Detectar</option><option value="128">tinySA</option><option value="174">tinySA Ultra</option></select></label>
     <label class="f">Umbral (dBm)<input type="number" step="1" id="lvThr"></label>
     <label class="chk"><input type="checkbox" id="lvMax">Máximo</label>
@@ -557,7 +560,7 @@ function defaultState(){
   return {opts:{use5:true,use33:true,use79:true,use35:true,occBw:100,pmse:true},tv:[],excl:"",
     scan:{f:[],l:[],name:"",threshold:-85,enabled:true},
     groups:[mkModelGroup("shure-ulxd","G51",8,0),mkModelGroup("senn-iemg4","A",4,1)],
-    live:{source:"sim",start:470000,stop:694000,points:450,rfePts:"auto",tiny:"auto",thr:-80,maxOn:true,avgOn:false,viaBridge:!("serial" in navigator),bport:""},
+    live:{source:"sim",start:470000,stop:694000,points:450,rfePts:"auto",tiny:"auto",adRbw:350,adAnt:"all",adHost:"",thr:-80,maxOn:true,avgOn:false,viaBridge:!("serial" in navigator),bport:""},
     monitor:{expect:{}},
     net:{url:"http://127.0.0.1:8765",key:"",devices:[]}};
 }
@@ -1337,10 +1340,12 @@ async function bridgePost(path,body){
 class BridgeSource{
   async start(emit){
     if(!state.net.key)throw new Error("Falta la clave del puente: abre la app desde http://127.0.0.1:8765 o escríbela en Monitor de canales, Receptores.");
-    if(!state.live.bport)throw new Error("Elige el puerto del analizador (pulsa Buscar puertos).");
+    const ad=state.live.source==="ad600";
+    if(!ad&&!state.live.bport)throw new Error("Elige el puerto del analizador (pulsa Buscar puertos).");
+    if(ad&&(state.live.start<174000||state.live.stop>2000000))throw new Error("El AD600 cubre de 174 a 2000 MHz: ajusta el rango.");
     await bridgePost("/analyzer",{action:"start",type:state.live.source,port:state.live.bport,start:state.live.start,stop:state.live.stop,
-      points:state.live.points,rfePts:state.live.rfePts,tiny:state.live.tiny});
-    this.on=true;live.info="Conectando con el analizador a través del puente…";
+      points:state.live.points,rfePts:state.live.rfePts,tiny:state.live.tiny,rbw:state.live.adRbw,ant:state.live.adAnt,host:state.live.adHost});
+    this.on=true;live.info=ad?"Buscando el AD600 en la red…":"Conectando con el analizador a través del puente…";
     const es=new EventSource(netBase()+"/analyzer/events"+netQ());this.es=es;
     es.onmessage=ev=>{
       let m;try{m=JSON.parse(ev.data);}catch(_){return;}
@@ -1349,7 +1354,7 @@ class BridgeSource{
     };
     es.onerror=()=>{if(this.on&&this.es===es){live.info="Reconectando con el puente…";renderLiveStatus();}};
   }
-  setRange(){bridgePost("/analyzer",{action:"range",start:state.live.start,stop:state.live.stop,points:state.live.points}).catch(e=>toast(e.message));}
+  setRange(){bridgePost("/analyzer",{action:"range",start:state.live.start,stop:state.live.stop,points:state.live.points,rbw:state.live.adRbw,ant:state.live.adAnt}).catch(e=>toast(e.message));}
   async stop(){const was=this.on;this.on=false;if(this.es)this.es.close();if(was)try{await bridgePost("/analyzer",{action:"stop"});}catch(e){}}
 }
 async function loadBridgePorts(){
@@ -1372,8 +1377,8 @@ $("#lvVia").addEventListener("change",e=>{state.live.viaBridge=e.target.checked;
 
 /* ---------- Conexión ---------- */
 async function liveConnect(){
-  if(live.src){const s=live.src;live.src=null;await s.stop().catch(()=>{});live.status="Desconectado.";live.err=false;renderLiveStatus();renderMonConn();return;}
-  const S=state.live.source!=="sim"&&state.live.viaBridge?BridgeSource:{sim:SimSource,rfe:RFExplorerSource,tinysa:TinySASource}[state.live.source];
+  if(live.src){const s=live.src;live.src=null;await s.stop().catch(()=>{});live.info="";live.status="Desconectado.";live.err=false;renderLiveStatus();renderMonConn();return;}
+  const S=state.live.source==="ad600"||(state.live.source!=="sim"&&state.live.viaBridge)?BridgeSource:{sim:SimSource,rfe:RFExplorerSource,tinysa:TinySASource}[state.live.source];
   const src=new S();live.err=false;live.status="";live.info="Conectando…";live.f=null;renderLiveStatus();
   try{await src.start(onSweep);live.src=src;}
   catch(e){live.info="";live.status=e.message;live.err=true;try{await src.stop();}catch(_){}}
@@ -1381,11 +1386,11 @@ async function liveConnect(){
 }
 function renderLiveStatus(){
   $("#lvConn").textContent=live.src?"Desconectar":"Conectar";
-  $("#lvSrc").disabled=$("#lvVia").disabled=$("#lvPort").disabled=!!live.src;
+  $("#lvSrc").disabled=$("#lvVia").disabled=$("#lvPort").disabled=$("#lvAdHost").disabled=!!live.src;
   const el=$("#lvStatus");el.classList.toggle("err",live.err);
   let t=live.err?live.status:(live.info||live.status||"Elige un analizador y pulsa Conectar. El simulador sirve para probar sin hardware.");
   if(live.src&&live.f){const bw=binW();t+=`  ${sweepRate().toFixed(1)} barridos/s, ${bw>=1000?(bw/1000).toFixed(2)+" MHz":Math.round(bw)+" kHz"} por punto.`;
-    if(bw>250)t+=" Para distinguir portadoras cercanas, reduce el rango o aumenta los puntos.";}
+    if(bw>250)t+=state.live.source==="ad600"?" Para distinguir portadoras cercanas, reduce el rango o baja la resolución.":" Para distinguir portadoras cercanas, reduce el rango o aumenta los puntos.";}
   el.textContent=t;
   const d=document.querySelector('.tabs [data-tab="live"]');d.innerHTML="Espectro en vivo"+(live.src?'<span class="dot" style="background:var(--ok)" aria-label="conectado"></span>':"");
 }
@@ -1397,13 +1402,20 @@ function syncLiveControls(){
   $("#lvRfePts").value=L.rfePts;$("#lvTiny").value=L.tiny;$("#lvThr").value=L.thr;$("#monThr").value=L.thr;
   $("#lvMax").checked=L.maxOn;$("#lvAvg").checked=L.avgOn;
   $("#lvPtsW").hidden=L.source==="rfe";$("#lvRfePtsW").hidden=L.source!=="rfe";$("#lvTinyW").hidden=L.source!=="tinysa";
-  $("#lvVia").checked=!!L.viaBridge;$("#lvViaW").hidden=L.source==="sim";
-  $("#lvPortW").hidden=$("#lvPorts").hidden=L.source==="sim"||!L.viaBridge;
+  const ad=L.source==="ad600";
+  $("#lvVia").checked=!!L.viaBridge;$("#lvViaW").hidden=L.source==="sim"||ad;
+  $("#lvPortW").hidden=$("#lvPorts").hidden=L.source==="sim"||ad||!L.viaBridge;
+  $("#lvAdRbwW").hidden=$("#lvAdAntW").hidden=$("#lvAdHostW").hidden=!ad;
+  $("#lvAdRbw").value=L.adRbw;$("#lvAdAnt").value=L.adAnt;$("#lvAdHost").value=L.adHost||"";
+  if(ad)$("#lvPtsW").hidden=true;
   if(L.bport&&!$("#lvPort").querySelector(`option[value="${CSS.escape(L.bport)}"]`))$("#lvPort").innerHTML=`<option value="${esc(L.bport)}">${esc(L.bport)}</option>`;
   $("#lvPort").value=L.bport||"";
 }
 function liveRangeChanged(){save();if(live.src)live.src.setRange();if(live.f){live.max=null;}}
-$("#lvSrc").addEventListener("change",e=>{state.live.source=e.target.value;save();syncLiveControls();renderLiveStatus();if(state.live.viaBridge&&e.target.value!=="sim"&&state.net.key)loadBridgePorts();});
+$("#lvSrc").addEventListener("change",e=>{state.live.source=e.target.value;save();syncLiveControls();renderLiveStatus();if(state.live.viaBridge&&e.target.value!=="sim"&&e.target.value!=="ad600"&&state.net.key)loadBridgePorts();});
+$("#lvAdRbw").addEventListener("change",e=>{state.live.adRbw=+e.target.value;save();if(live.src)live.src.setRange();});
+$("#lvAdAnt").addEventListener("change",e=>{state.live.adAnt=e.target.value;save();if(live.src)live.src.setRange();});
+$("#lvAdHost").addEventListener("change",e=>{state.live.adHost=e.target.value.trim();save();if(live.src)toast("La IP se aplicará al volver a conectar.");});
 $("#lvConn").addEventListener("click",liveConnect);
 for(const id of ["#lvA","#lvB"])$(id).addEventListener("change",()=>{
   const a=parseMHz($("#lvA").value),b=parseMHz($("#lvB").value);
