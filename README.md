@@ -26,6 +26,19 @@ Los proyectos se guardan en la ventana de la app. Para pasar un proyecto de otra
 Registro de errores: `~/Library/Application Support/CoordinadorRF/CoordinadorRF.log` (Mac) o
 `%APPDATA%\CoordinadorRF\CoordinadorRF.log` (Windows).
 
+## Receptores de red y canales virtuales
+
+Cada canal de la coordinación puede ser **virtual** (solo existe en el cálculo) o estar **enlazado** a un
+canal de un receptor de red (columna *Receptor* de la tabla de frecuencias).
+
+- **Importar a la coordinación** (Monitor de canales → Receptores, junto a cada receptor): crea un grupo con
+  las frecuencias actuales del receptor, bloqueadas, y lo enlaza canal a canal. Reconoce el modelo (ULX-D, QLX-D,
+  Axient Digital, EW-DX…) y su banda; si no, crea un grupo personalizado.
+- **Asignar a receptores** (cabecera de cada grupo): enlaza los canales virtuales ya coordinados con canales
+  libres de receptores compatibles (misma marca y, si se reconoce, mismo modelo). También se puede elegir a mano en la columna *Receptor*.
+- **Enviar a receptores** (por grupo o para todos): programa en los receptores las frecuencias coordinadas,
+  previa confirmación con la lista de cambios. Después hay que sincronizar los emisores.
+
 ## Desarrollo
 
 ```

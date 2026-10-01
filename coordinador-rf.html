@@ -102,6 +102,9 @@ tr.ch{cursor:pointer}
 tr.ch.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .chip{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;vertical-align:0}
 td input.freq{width:110px;font-variant-numeric:tabular-nums;font-weight:600}
+.gbtns{float:right;display:inline-flex;gap:6px;font-weight:400}
+td select.rxsel{max-width:210px;font-size:13px}
+td small.rxst{display:block;font-size:12px;margin-top:2px}
 .lock{border:1px solid var(--line);background:var(--raise);border-radius:4px;width:32px;height:30px;display:inline-grid;place-items:center;cursor:pointer;color:var(--muted)}
 .lock[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}
 .st-ok{color:var(--ok);font-weight:600}
@@ -289,9 +292,10 @@ td input.freq{width:110px;font-variant-numeric:tabular-nums;font-weight:600}
       <button class="btn small" id="lockAll">Bloquear todas</button>
       <button class="btn small" id="unlockAll">Desbloquear todas</button>
       <button class="btn small" id="clearFree">Vaciar no bloqueadas</button>
+      <button class="btn small primary" id="sendAll" title="Programa en los receptores de red las frecuencias de los canales enlazados">Enviar a receptores</button>
     </div>
     <table>
-      <thead><tr><th>Canal</th><th>Frecuencia (MHz)</th><th><span class="sr">Bloqueo</span></th><th>Estado</th></tr></thead>
+      <thead><tr><th>Canal</th><th>Frecuencia (MHz)</th><th><span class="sr">Bloqueo</span></th><th>Estado</th><th>Receptor</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -579,7 +583,8 @@ function normalize(s){
       const k=ms.modes.findIndex(m=>{const r=ruleOf(m);return RULE_KEYS.every(x=>r[x]===ng[x])&&r.ims===ng.ims;});
       ng.preset=k>=0?"mode:"+k:"custom";
     }
-    ng.freqs=Array.from({length:ng.qty},(_,k)=>{const e=(g.freqs||[])[k];return e&&e.f!=null?{f:e.f|0,locked:!!e.locked}:{f:null,locked:false};});
+    ng.freqs=Array.from({length:ng.qty},(_,k)=>{const e=(g.freqs||[])[k]||{};const o=e.f!=null?{f:e.f|0,locked:!!e.locked}:{f:null,locked:false};
+      if(e.rx&&e.rx.d!=null&&e.rx.c!=null)o.rx={d:String(e.rx.d),c:String(e.rx.c)};return o;});
     st.groups.push(ng);
   });
   st.live=Object.assign(d.live,s.live||{});
@@ -777,9 +782,10 @@ const lockSvg=on=>on?'<svg width="14" height="14" viewBox="0 0 16 16" aria-hidde
 function renderTable(){
   const map=new Map();for(const c of analysis.C)map.set(c.g.id+":"+c.i,c);
   let h="";
-  if(!state.groups.length){$("#tbody").innerHTML=`<tr><td colspan="4" class="empty">Añade un grupo de equipos en el panel lateral para empezar.</td></tr>`;return;}
+  if(!state.groups.length){$("#tbody").innerHTML=`<tr><td colspan="5" class="empty">Añade un grupo de equipos en el panel lateral para empezar.</td></tr>`;return;}
   state.groups.forEach(g=>{
-    h+=`<tr class="ghdr"><td colspan="4"><span class="chip" style="background:${esc(g.color)}"></span>${esc(g.name)}<span class="rng">${g.model?`${esc(libSeries(g.model.series).brand)} ${esc(libSeries(g.model.series).name)}, banda ${esc(g.model.band)}: `:""}${segsText(g.segs)}, paso ${g.step} kHz</span></td></tr>`;
+    const nLk=g.freqs.filter(e=>e.rx).length,nFree=g.freqs.filter(e=>e.f!=null&&!e.rx).length;
+    h+=`<tr class="ghdr"><td colspan="5"><span class="gbtns">${nFree&&net.snap?`<button class="btn small" data-assign="${g.id}" title="Enlaza los canales virtuales con canales libres de receptores de red compatibles">Asignar a receptores</button>`:""}${nLk?`<button class="btn small" data-push="${g.id}">Enviar a receptores</button>`:""}</span><span class="chip" style="background:${esc(g.color)}"></span>${esc(g.name)}<span class="rng">${g.model?`${esc(libSeries(g.model.series).brand)} ${esc(libSeries(g.model.series).name)}, banda ${esc(g.model.band)}: `:""}${segsText(g.segs)}, paso ${g.step} kHz</span></td></tr>`;
     g.freqs.forEach((e,i)=>{
       const k=g.id+":"+i,c=map.get(k);
       let st;
@@ -788,14 +794,18 @@ function renderTable(){
       else{const L=c.issues,show=L.slice(0,8);st=`<details class="iss"><summary>${L.length} problema${L.length>1?"s":""}</summary><ul>${show.map(x=>`<li>${esc(x)}</li>`).join("")}${L.length>8?`<li>y ${L.length-8} más</li>`:""}</ul></details>`;}
       h+=`<tr class="ch${selected===k?" sel":""}" data-k="${k}"><td><span class="chip" style="background:${esc(g.color)}"></span>${i+1}</td>`+
         `<td><input class="freq" type="text" inputmode="decimal" data-k="${k}" value="${e.f!=null?fmt(e.f):""}" placeholder="—" aria-label="Frecuencia ${esc(g.name)} ${i+1}"></td>`+
-        `<td><button class="lock" data-lock="${k}" aria-pressed="${e.locked}" title="${e.locked?"Bloqueada: no cambia al coordinar":"Libre: se recalcula al coordinar"}">${lockSvg(e.locked)}</button></td><td>${st}</td></tr>`;
+        `<td><button class="lock" data-lock="${k}" aria-pressed="${e.locked}" title="${e.locked?"Bloqueada: no cambia al coordinar":"Libre: se recalcula al coordinar"}">${lockSvg(e.locked)}</button></td><td>${st}</td><td>${rxCell(e,k)}</td></tr>`;
     });
   });
   $("#tbody").innerHTML=h;
 }
 function entryByKey(k){const [id,i]=k.split(":");const g=state.groups.find(x=>x.id===id);return g?{g,e:g.freqs[+i],i:+i}:null;}
 $("#tbody").addEventListener("change",ev=>{
-  const t=ev.target;if(!t.classList.contains("freq"))return;
+  const t=ev.target;
+  if(t.classList.contains("rxsel")){const r=entryByKey(t.dataset.k);if(!r)return;
+    if(!t.value)delete r.e.rx;else{const i=t.value.lastIndexOf("|");r.e.rx={d:t.value.slice(0,i),c:t.value.slice(i+1)};}
+    save();renderTable();return;}
+  if(!t.classList.contains("freq"))return;
   const r=entryByKey(t.dataset.k);if(!r)return;
   const v=parseMHz(t.value);
   if(t.value.trim()&&v===null){toast("Escribe la frecuencia en MHz, por ejemplo 536.250.");t.value=r.e.f!=null?fmt(r.e.f):"";return;}
@@ -803,9 +813,11 @@ $("#tbody").addEventListener("change",ev=>{
 });
 $("#tbody").addEventListener("keydown",ev=>{if(ev.key==="Enter"&&ev.target.classList.contains("freq"))ev.target.blur();});
 $("#tbody").addEventListener("click",ev=>{
+  const ab=ev.target.closest("[data-assign]");if(ab){assignGroup(ab.dataset.assign);return;}
+  const pb=ev.target.closest("[data-push]");if(pb){pushToReceivers(pb.dataset.push);return;}
   const lb=ev.target.closest("[data-lock]");
   if(lb){const r=entryByKey(lb.dataset.lock);if(r&&r.e.f!=null){r.e.locked=!r.e.locked;save();renderTable();}else toast("Asigna una frecuencia antes de bloquearla.");return;}
-  if(ev.target.closest("input,details"))return;
+  if(ev.target.closest("input,details,select,button"))return;
   const tr=ev.target.closest("tr.ch");if(!tr)return;
   selectKey(tr.dataset.k,true);
 });
@@ -1112,7 +1124,7 @@ function setTab(t){
   document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
   $("#viewCoord").hidden=t!=="coord";$("#viewMon").hidden=t!=="mon";$("#viewLive").hidden=t!=="live";
   $("#btnCoord").hidden=t!=="coord";$("#status").hidden=t!=="coord";
-  if(t==="coord")requestAnimationFrame(draw);
+  if(t==="coord"){net.coordSig="";renderTable();requestAnimationFrame(draw);}
   if(t==="mon"){renderMonConn();renderTiles(true);renderRxList(true);renderSide();}
   if(t==="live"){syncLiveControls();renderLiveStatus();requestAnimationFrame(()=>{drawLive();clearWater();});}
 }
@@ -1640,7 +1652,7 @@ function renderNetDevs(){
     <td><select data-nf="kind" aria-label="Protocolo">${Object.entries(NET_KINDS).map(([k,v])=>`<option value="${k}"${k===d.kind?" selected":""}>${v}</option>`).join("")}</select></td>
     <td><input type="text" data-nf="host" value="${esc(d.host||"")}" placeholder="192.168.1.50" aria-label="IP"></td>
     <td><input type="text" data-nf="port" value="${d.port??""}" placeholder="${d.kind==="ssc"?45:2202}" inputmode="numeric" aria-label="Puerto" style="width:74px"></td>
-    <td class="nst s-idle">—</td><td><button class="btn small ghost" data-nrm="1">Quitar</button></td></tr>`).join("")
+    <td class="nst s-idle">—</td><td style="white-space:nowrap"><button class="btn small" data-nimp="1" title="Crea un grupo en la coordinación con las frecuencias actuales de este receptor">Importar a la coordinación</button> <button class="btn small ghost" data-nrm="1">Quitar</button></td></tr>`).join("")
     :`<tr><td colspan="6" class="s-idle">Sin receptores. Añade la IP de cada receptor de red.</td></tr>`;
   updateNetDevStatus();
 }
@@ -1661,7 +1673,9 @@ $("#netDevs").addEventListener("change",e=>{
   d[f]=v;if(f==="kind")renderNetDevs();save();if(net.es)netPushDevices();
 });
 $("#netDevs").addEventListener("click",e=>{
-  if(!e.target.closest("[data-nrm]"))return;const tr=e.target.closest("tr[data-id]");
+  const tr=e.target.closest("tr[data-id]");
+  if(tr&&e.target.closest("[data-nimp]")){importDevice(tr.dataset.id);return;}
+  if(!e.target.closest("[data-nrm]"))return;
   state.net.devices=state.net.devices.filter(x=>x.id!==tr.dataset.id);save();renderNetDevs();if(net.es)netPushDevices();
 });
 $("#netAdd").addEventListener("click",()=>{state.net.devices.push({id:"d"+Math.random().toString(36).slice(2,8),kind:"shure",host:"",port:null,name:""});save();renderNetDevs();});
@@ -1767,6 +1781,118 @@ $("#rxList").addEventListener("click",async e=>{
     toast("Frecuencia enviada. Sincroniza el emisor.");logEvent(`Enviada ${fmt(khz)} MHz a ${r?r.label:id+" canal "+ch}`,"ok");renderSide();
   }catch(err){toast("No se ha podido enviar: "+err.message);}
 });
+
+/* ---------- Receptores de red y coordinación ----------
+   Cada canal de un grupo puede enlazarse con un canal de un receptor de red (e.rx = {d: id del receptor, c: canal}).
+   Un canal sin enlace es "virtual": solo existe en la coordinación. Se puede importar un receptor como grupo,
+   enlazar canales virtuales con receptores libres y enviar (volcar) las frecuencias coordinadas a los receptores. */
+const BRAND_OF={shure:"Shure",ssc:"Sennheiser"};
+function snapDev(id){return net.snap?net.snap.devices.find(d=>d.id===id)||null:null;}
+function seriesOfDev(d){
+  const m=String(d.model||"");
+  if(d.kind==="shure"){
+    if(/^ULXD/i.test(m))return "shure-ulxd";if(/^QLXD/i.test(m))return "shure-qlxd";if(/^SLXD/i.test(m))return "shure-slxd";
+    if(/^(AD[1-4]|ADX)/i.test(m))return "shure-ad";if(/^(UR[1-4]|UHF)/i.test(m))return "shure-uhfr";
+    if(/^AXT/i.test(m))return "shure-axt";if(/^(PSM ?1000|P10)/i.test(m))return "shure-psm1000";
+  }else if(d.kind==="ssc"){
+    if(/EW-DX/i.test(m))return "senn-ewdx";if(/EM ?6000/i.test(m))return "senn-d6000";if(/EM ?9046/i.test(m))return "senn-d9000";
+  }
+  return null;
+}
+function linkedKeys(except){const k=new Set();for(const g of state.groups)for(const e of g.freqs)if(e.rx&&e!==except)k.add(e.rx.d+"|"+e.rx.c);return k;}
+function rxChan(e){
+  if(!e.rx)return null;const d=snapDev(e.rx.d),c=d&&d.channels[e.rx.c];
+  return c?{dev:d,ch:e.rx.c,c,where:`${d.name||d.model||d.host}, canal ${e.rx.c}`}:null;
+}
+const rxFreq=c=>c.freq!=null&&c.freq>0?c.freq:null;
+function rxCell(e,k){
+  const mine=e.rx?e.rx.d+"|"+e.rx.c:"",taken=linkedKeys(e);let found=false;
+  const o=[`<option value="">Virtual</option>`];
+  for(const r of rxList()){
+    const key=r.dev.id+"|"+r.ch;if(taken.has(key))continue;if(key===mine)found=true;
+    o.push(`<option value="${esc(key)}"${key===mine?" selected":""}>${esc(r.where)}${rxFreq(r.c)!=null?" · "+fmt(rxFreq(r.c)):""}</option>`);
+  }
+  if(mine&&!found)o.push(`<option value="${esc(mine)}" selected>Receptor no disponible</option>`);
+  let st="";
+  if(e.rx){const r=rxChan(e);
+    if(!r)st=`<small class="rxst s-idle">Sin conexión con el receptor</small>`;
+    else if(e.f!=null)st=rxFreq(r.c)===e.f?`<small class="rxst s-ok">Sintonizado</small>`:`<small class="rxst s-warn">El receptor está en ${rxFreq(r.c)!=null?fmt(rxFreq(r.c))+" MHz":"una frecuencia desconocida"}</small>`;}
+  return `<select class="rxsel" data-k="${k}" aria-label="Receptor enlazado">${o.join("")}</select>${st}`;
+}
+function refreshCoordRx(){
+  if(tab!=="coord")return;
+  const sig=rxList().map(r=>r.dev.id+"|"+r.ch+"|"+r.c.freq+"|"+r.dev.online).join(";")+"#"+state.groups.map(g=>g.freqs.map(e=>e.rx?e.rx.d+"|"+e.rx.c:"").join(",")).join(";");
+  if(sig===net.coordSig)return;
+  const a=document.activeElement;if(a&&a.closest&&a.closest("#tbody"))return;  // no quitar el foco mientras se edita
+  net.coordSig=sig;renderTable();
+}
+async function sendFreq(id,ch,khz){
+  const res=await fetch(netBase()+"/frequency"+netQ(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,ch:+ch,khz})});
+  const j=await res.json().catch(()=>({}));if(!res.ok)throw new Error(j.error||("Error "+res.status));
+}
+/* Importar: crea un grupo con las frecuencias actuales del receptor (bloqueadas) y lo enlaza canal a canal. */
+function importDevice(id){
+  const d=snapDev(id);
+  if(!d){toast("Conecta el puente y espera a que el receptor responda.");return;}
+  const chs=Object.keys(d.channels).sort((a,b)=>a-b);
+  if(!chs.length){toast("El receptor aún no ha enviado sus canales.");return;}
+  const used=linkedKeys(),todo=chs.filter(n=>!used.has(d.id+"|"+n));
+  if(!todo.length){toast("Este receptor ya está en la coordinación.");return;}
+  const fr=todo.map(n=>rxFreq(d.channels[n])),known=fr.filter(f=>f!=null);
+  const sid=seriesOfDev(d),s=sid&&libSeries(sid);
+  const band=s&&known.length?s.bandList.find(b=>known.every(f=>b.segs.some(([a,z])=>f>=a&&f<=z))):null;
+  const name=d.name||d.model||d.host;let g,note="";
+  if(s&&(band||!known.length)){g=mkModelGroup(sid,band?band.name:null,todo.length,state.groups.length);g.autoName=false;g.name=name;}
+  else{
+    g=mkGroup(name,todo.length,known.length?Math.min(...known)-4000:470000,known.length?Math.max(...known)+4000:694000,25,"analog",state.groups.length);
+    note=s?" Sus frecuencias no caben en ninguna banda de la biblioteca: el grupo es personalizado.":" No he reconocido el modelo: el grupo es personalizado, elige el equipo si quieres sus reglas.";
+  }
+  g.freqs=todo.map((n,i)=>({f:fr[i],locked:fr[i]!=null,rx:{d:d.id,c:n}}));
+  state.groups.push(g);save();renderGroups();analyzeNow();renderTable();
+  toast(`Importado «${name}»: ${todo.length} canal${todo.length>1?"es":""} con sus frecuencias bloqueadas.${note} Míralo en Coordinación.`);
+}
+/* Asignar: enlaza los canales virtuales coordinados de un grupo con canales libres de receptores compatibles. */
+function assignGroup(gid){
+  const g=state.groups.find(x=>x.id===gid);if(!g)return;
+  if(!net.snap){toast("Conecta el puente para ver los receptores.");return;}
+  const brand=g.model&&libSeries(g.model.series).brand,sid=g.model&&g.model.series,taken=linkedKeys();
+  const cands=rxList().filter(r=>{
+    if(taken.has(r.dev.id+"|"+r.ch)||!r.dev.online)return false;
+    if(brand&&BRAND_OF[r.dev.kind]!==brand)return false;
+    const ds=seriesOfDev(r.dev);return !(sid&&ds&&ds!==sid);
+  }).sort((a,b)=>(seriesOfDev(b.dev)===sid)-(seriesOfDev(a.dev)===sid));
+  const slots=g.freqs.map((e,i)=>({e,i})).filter(x=>x.e.f!=null&&!x.e.rx);
+  const n=Math.min(slots.length,cands.length);
+  if(!n){toast(slots.length?"No hay canales de receptor libres y compatibles con este grupo.":"Este grupo no tiene canales virtuales con frecuencia.");return;}
+  const lines=slots.slice(0,Math.min(n,12)).map((x,k)=>`${g.name} ${x.i+1} (${fmt(x.e.f)} MHz) → ${cands[k].where}`);
+  if(!confirm(`Se enlazarán ${n} de ${slots.length} canales de «${g.name}»:\n\n${lines.join("\n")}${n>12?`\n… y ${n-12} más`:""}${n<slots.length?`\n\nLos otros ${slots.length-n} se quedan virtuales.`:""}\n\nNo se envía nada a los receptores todavía.`))return;
+  for(let k=0;k<n;k++)slots[k].e.rx={d:cands[k].dev.id,c:cands[k].ch};
+  save();renderTable();toast(`${n} canales enlazados. Pulsa «Enviar a receptores» para programarlos.`);
+}
+/* Volcar: programa en los receptores las frecuencias coordinadas de los canales enlazados. */
+async function pushToReceivers(gid){
+  if(!net.snap){toast("Conecta el puente primero.");return;}
+  const issues=new Map();for(const c of analysis.C)issues.set(c.g.id+":"+c.i,c.issues.length);
+  const chg=[],off=[];let same=0;
+  for(const g of state.groups){if(gid&&g.id!==gid)continue;
+    g.freqs.forEach((e,i)=>{
+      if(!e.rx||e.f==null)return;const r=rxChan(e);
+      if(!r||!r.dev.online){off.push(`${g.name} ${i+1}`);return;}
+      if(rxFreq(r.c)===e.f){same++;return;}
+      chg.push({g,i,e,r,bad:issues.get(g.id+":"+i)||0});
+    });}
+  if(!chg.length){toast(off.length?`Sin conexión con el receptor de ${off.length} canal${off.length>1?"es":""}.`:same?"Los receptores ya tienen estas frecuencias.":"No hay canales enlazados con frecuencia coordinada.");return;}
+  const bad=chg.filter(x=>x.bad).length;
+  const lines=chg.slice(0,12).map(x=>`${x.r.where}: ${rxFreq(x.r.c)!=null?fmt(rxFreq(x.r.c)):"?"} → ${fmt(x.e.f)} MHz`);
+  if(!confirm(`Se programarán ${chg.length} canal${chg.length>1?"es":""} en los receptores:\n\n${lines.join("\n")}${chg.length>12?`\n… y ${chg.length-12} más`:""}${bad?`\n\nAtención: ${bad} de estas frecuencias tienen problemas de compatibilidad.`:""}${off.length?`\n\nNo se enviarán por falta de conexión: ${off.join(", ")}.`:""}\n\nDespués tendrás que sincronizar los emisores con los receptores.`))return;
+  let ok=0;const errs=[];
+  for(const x of chg){
+    try{await sendFreq(x.r.dev.id,x.r.ch,x.e.f);ok++;logEvent(`Enviada ${fmt(x.e.f)} MHz a ${x.r.where}`,"ok");}
+    catch(err){errs.push(`${x.r.where}: ${err.message}`);logEvent(`No se pudo programar ${x.r.where}: ${err.message}`,"bad");}
+  }
+  toast(errs.length?`Enviadas ${ok} de ${chg.length}. Fallaron: ${errs.join("; ")}`:`${ok} frecuencia${ok>1?"s":""} enviada${ok>1?"s":""}. Sincroniza los emisores.`);
+}
+$("#sendAll").addEventListener("click",()=>pushToReceivers());
 function updateMonDot(){
   const alarms=[...mon.st.values()].some(s=>s.alarm)||mon.intr.length>0||net.alarm;
   document.querySelector('.tabs [data-tab="mon"]').innerHTML="Monitor de canales"+(alarms?'<span class="dot" aria-label="alertas"></span>':"");
@@ -1783,7 +1909,7 @@ function netChanged(){
     if(prev!==undefined&&prev!==txt)logEvent(`${ch.g.name} ${ch.i+1} (${fmt(ch.f)}): ${txt?txt.toLowerCase():"sin avisos del receptor"}`,al.some(a=>a.bad)?"bad":txt?"warn":"ok");
     net.prev.set(ch.key,txt);
   }
-  net.alarm=any;updateMonDot();
+  net.alarm=any;updateMonDot();refreshCoordRx();
   if(tab==="mon"){renderTiles(false);renderRxList(false);renderSide();}
 }
 
