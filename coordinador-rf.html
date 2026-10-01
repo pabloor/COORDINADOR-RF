@@ -332,9 +332,6 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <div class="side">
       <h2>Receptores</h2>
       <ul id="rxList"></ul>
-      <h2>Señales fuera de lo coordinado</h2>
-      <p class="hint" style="margin-top:0">Picos por encima del umbral que no son ninguna de tus frecuencias.</p>
-      <ul id="intr"></ul>
       <h2 style="display:flex;justify-content:space-between;align-items:center">Registro <button class="btn small ghost" id="logClear">Borrar</button></h2>
       <ul id="mlog"></ul>
     </div>
@@ -1510,27 +1507,13 @@ new ResizeObserver(()=>{drawLive();if(tab==="live")clearWater();}).observe(lcv);
    MONITOR DE CANALES
    ====================================================================== */
 function monChannels(){const out=[];for(const g of state.groups)g.freqs.forEach((e,i)=>{if(e.f!=null)out.push({key:g.id+":"+i,g,i,f:e.f});});return out;}
-const mon={lv:new Map(),st:new Map(),hist:new Map(),intr:[],log:[],seen:new Map(),lastTick:0,lastHist:0};
+const mon={lv:new Map(),st:new Map(),hist:new Map(),log:[],lastTick:0,lastHist:0};
 const EXP_TXT={auto:"Tx sin indicar",on:"Tx encendido",off:"Tx apagado"};
 function chStatus(key,lv){
   const ex=state.monitor.expect[key]||"auto",thr=state.live.thr;
   if(lv===null)return {c:"idle",t:live.f?"Fuera del rango del analizador":"Sin datos"};
   if(lv>=thr)return ex==="off"?{c:"bad",t:"Señal no esperada",alarm:true}:{c:"ok",t:"Portadora presente"};
   return ex==="on"?{c:"warn",t:"Sin portadora",alarm:true}:{c:"idle",t:"Libre"};
-}
-function findIntruders(){
-  const F=live.f,L=live.l;if(!F)return [];
-  const thr=state.live.thr,guard=Math.max(state.opts.occBw|0,binW()),ch=monChannels(),P=analysis.prods||{},out=[];
-  for(let i=0;i<F.length;i++){
-    const v=L[i];if(v<thr)continue;
-    if((i>0&&L[i-1]>v)||(i<F.length-1&&L[i+1]>=v))continue; // solo picos
-    const f=F[i];if(ch.some(c=>Math.abs(c.f-f)<=guard))continue;
-    let tag="";const tvn=Math.floor((f-470000)/8000)+21;
-    if(f>=470000&&f<694000&&state.tv.includes(tvn))tag=`Canal de TV ${tvn}, marcado como ocupado`;
-    else for(const k of IMD_KEYS)if(P[k]&&P[k].length&&anyWithin(P[k],Math.round(f),guard+1)){tag="Coincide con un producto de intermodulación previsto";break;}
-    out.push({f,v,tag});
-  }
-  return out.sort((x,y)=>y.v-x.v).slice(0,15);
 }
 function logEvent(txt,c){mon.log.unshift({t:new Date(),txt,c});if(mon.log.length>120)mon.log.length=120;}
 function monitorTick(now){
@@ -1542,8 +1525,6 @@ function monitorTick(now){
     if(hist){let h=mon.hist.get(c.key);if(!h)mon.hist.set(c.key,h=[]);h.push(lv);if(h.length>120)h.shift();}
     if(prev&&prev.t!==s.t&&(s.alarm||prev.alarm))logEvent(`${c.g.name} ${c.i+1} (${fmt(c.f)}): ${s.t.toLowerCase()}`,s.alarm?s.c:"ok");
   }
-  mon.intr=findIntruders();
-  for(const x of mon.intr){const k=Math.round(x.f/100);const t=mon.seen.get(k);if(!t||now-t>30000)logEvent(`Señal en ${fmt(Math.round(x.f))} MHz a ${x.v.toFixed(0)} dBm${x.tag?" ("+x.tag.toLowerCase()+")":""}`,"warn");mon.seen.set(k,now);}
   updateMonDot();
   if(tab==="mon"){renderTiles(false);renderSide();}
 }
@@ -1581,8 +1562,6 @@ function renderTiles(force){
   });
 }
 function renderSide(){
-  $("#intr").innerHTML=mon.intr.length?mon.intr.map(x=>`<li><div><b>${fmt(Math.round(x.f))} MHz</b> <span class="s-warn">${x.v.toFixed(0)} dBm</span>${x.tag?`<small>${esc(x.tag)}</small>`:""}</div><button class="btn small" data-excl="${Math.round(x.f)}">Excluir</button></li>`).join("")
-    :`<li class="s-idle">${live.f?"Ninguna por encima del umbral.":"Sin datos del analizador."}</li>`;
   const hh=d=>d.toTimeString().slice(0,8);
   $("#mlog").innerHTML=mon.log.length?mon.log.slice(0,60).map(e=>`<li><div><span class="t">${hh(e.t)}</span><span class="s-${e.c}">${esc(e.txt)}</span></div></li>`).join(""):`<li class="s-idle">Sin eventos.</li>`;
 }
@@ -1592,12 +1571,6 @@ $("#tiles").addEventListener("click",e=>{
   if(nx==="auto")delete state.monitor.expect[k];else state.monitor.expect[k]=nx;
   b.dataset.v=nx;b.textContent=EXP_TXT[nx];save();
   mon.st.set(k,chStatus(k,mon.lv.get(k)??null));renderTiles(false);
-});
-$("#intr").addEventListener("click",e=>{
-  const b=e.target.closest("[data-excl]");if(!b)return;
-  const f=+b.dataset.excl,h=Math.max(state.opts.occBw|0,Math.round(binW()/2));
-  state.excl=(state.excl.trim()?state.excl.trim()+"\n":"")+`${fmt(f-h)}-${fmt(f+h)}`;$("#excl").value=state.excl;
-  save();analyzeNow();renderTable();toast("Añadida a Exclusiones. Vuelve a coordinar para apartar tus canales de ahí.");
 });
 $("#monAllOn").addEventListener("click",()=>{for(const c of monChannels())state.monitor.expect[c.key]="on";save();renderTiles(true);});
 $("#monAllAuto").addEventListener("click",()=>{state.monitor.expect={};save();renderTiles(true);});
@@ -1894,7 +1867,7 @@ async function pushToReceivers(gid){
 }
 $("#sendAll").addEventListener("click",()=>pushToReceivers());
 function updateMonDot(){
-  const alarms=[...mon.st.values()].some(s=>s.alarm)||mon.intr.length>0||net.alarm;
+  const alarms=[...mon.st.values()].some(s=>s.alarm)||net.alarm;
   document.querySelector('.tabs [data-tab="mon"]').innerHTML="Monitor de canales"+(alarms?'<span class="dot" aria-label="alertas"></span>':"");
 }
 function netChanged(){
