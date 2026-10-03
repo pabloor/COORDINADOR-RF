@@ -12,8 +12,17 @@ En [Releases](https://github.com/pabloor/COORDINADOR-RF/releases/latest):
   la primera vez, porque la app no está firmada por Apple. Acepta los avisos de red local y de la carpeta Documentos.
 - **Windows:** `Coordinador.RF.exe` (necesita Edge WebView2, incluido en Windows 11).
 
-La app avisa dentro de la ventana cuando hay una versión nueva. No se actualiza sola: descarga la nueva y sustituye la anterior.
-Los proyectos se conservan.
+## Actualizar
+
+La app avisa dentro de la ventana cuando hay una versión nueva. En el **Mac** basta con pulsar **Actualizar ahora**: la app descarga la
+release, comprueba su huella SHA-256 (la que publica GitHub), se cierra liberando antes el AD600 y los receptores, se sustituye por la
+nueva y se vuelve a abrir. Tus proyectos se conservan, y la versión anterior queda guardada en
+`~/Library/Application Support/CoordinadorRF/versiones-anteriores/`. Si la nueva no responde en 60 s, vuelve sola a la anterior
+(registro en `actualizacion.log`, en esa misma carpeta). Solo actúa cuando pulsas el botón: no la uses en mitad de un evento.
+
+Condiciones: la app tiene que estar en Aplicaciones (si se abre desde Descargas, macOS la ejecuta en una zona de solo lectura y la app lo
+avisa) y la versión que tengas ya debe llevar esta función (de la 1.5 o anteriores se pasa a mano esta vez). Al no estar firmada por
+Apple, macOS puede volver a pedir los permisos de red local y de Documentos tras actualizar. En Windows el aviso lleva a la descarga.
 
 ## Qué hace
 
@@ -54,7 +63,7 @@ con resolución de 50, 100, 350 o 900 kHz y las antenas A–F (o todas a la vez)
 | `ad600/` | Motor de comunicación con el AD600 (código de terceros, MIT, sin modificar: ver `ad600/README.md`) |
 | `tests/` | Pruebas de extremo a extremo (`python3 tests/e2e.py`) con puente real, receptores demo y AD600 simulado |
 | `mac/icono.*` | Iconos |
-| `.github/workflows/` | `tests.yml` (pruebas) y `build.yml` (compila `.app` para Mac Apple Silicon e Intel, y `.exe`) |
+| `.github/workflows/` | `tests.yml` (pruebas) y `build.yml` (compila `.app` para Mac Apple Silicon e Intel y `.exe`, y prueba la actualización completa sobre la app real con `tests/updater_mac.sh`) |
 
 ## Desarrollo
 
@@ -64,6 +73,6 @@ python3 puente-rf.py --demo      # con receptores simulados; --ventana para abri
 python3 tests/e2e.py             # todas las pruebas (PW_CHROMIUM=/ruta/chromium si hace falta)
 ```
 
-**Publicar una versión:** sube `VERSION` en `puente-rf.py` y, en *Actions → Compilar app → Run workflow*, escribe la etiqueta
+**Publicar una versión:** sube `VERSION` en `puente-rf.py` (la actualización compara versiones con ese número) y, en *Actions → Compilar app → Run workflow*, escribe la etiqueta
 (por ejemplo `v1.6`). La compilación crea la etiqueta, compila para Mac y Windows y publica la release con las notas de
 `.github/release-notes.md` (actualízalas antes).

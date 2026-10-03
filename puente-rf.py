@@ -29,12 +29,12 @@ desde el propio puente se rellena sola. Sin clave nadie puede leer ni cambiar na
 Solo biblioteca estándar de Python 3.8+.
 """
 import argparse, errno, ipaddress, json, shutil, os, queue, random, re, secrets, signal, socket, sys, threading, time, urllib.request, webbrowser
-import subprocess, ssl, unicodedata
+import subprocess, ssl, unicodedata, hashlib, platform, plistlib
 from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.5"
+VERSION = "1.6"
 try:
     import serial  # pyserial: solo hace falta para el analizador
     from serial.tools import list_ports
@@ -1225,6 +1225,7 @@ def diagnostics():
         f"Analizador: {an.get('info') or '-'} | error: {an.get('error') or '-'}",
         "Receptores:" + ("\n" + "\n".join(devs) if devs else " ninguno"),
         "", "--- CoordinadorRF.log (últimas líneas) ---", tail(os.path.join(config_dir(), "CoordinadorRF.log"), 60),
+        "", "--- actualizacion.log (últimas líneas) ---", tail(os.path.join(config_dir(), "actualizacion.log"), 20),
         "", "--- AD600 console_out.log (últimas líneas) ---", tail(os.path.join(scratch, "console_out.log"), 80),
     ]
     return "\n".join(parts)
@@ -1235,6 +1236,59 @@ def _ver(v):
 
 
 _UPD = {"t": 0.0, "data": None}
+UPDATE_TEST = "CRF_UPDATE_API"  # solo para pruebas: otra dirección para «la última release» (y se admiten descargas desde 127.0.0.1)
+UA = {"User-Agent": "CoordinadorRF", "Accept": "application/vnd.github+json"}
+
+
+def _urlopen(req, timeout):
+    """Abre una dirección probando primero los certificados del sistema y después los de certifi (en la app
+    empaquetada puede faltar alguno)."""
+    ctxs = [ssl.create_default_context()]
+    try:
+        import certifi
+        ctxs.append(ssl.create_default_context(cafile=certifi.where()))
+    except Exception:
+        pass
+    err = None
+    for ctx in ctxs:
+        try:
+            return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+        except (ssl.SSLError, urllib.error.URLError) as e:
+            err = e
+    raise err
+
+
+def mac_asset_name():
+    """El archivo de la release que corresponde a la app que está en marcha (Apple Silicon o Intel)."""
+    return "Coordinador-RF-Mac-Intel.zip" if platform.machine().lower() in ("x86_64", "amd64") else "Coordinador-RF-Mac.zip"
+
+
+def asset_url_ok(url):
+    if os.environ.get(UPDATE_TEST):
+        return str(url).startswith("http://127.0.0.1:")
+    return str(url).startswith(f"https://github.com/{UPDATE_REPO}/releases/download/")
+
+
+def app_bundle():
+    """Ruta de «Coordinador RF.app» si esto es la app de Mac instalada; si no (Windows, desarrollo), None."""
+    if not (FROZEN and sys.platform == "darwin"):
+        return None
+    m = re.match(r"^(.*?\.app)/Contents/MacOS/", os.path.realpath(sys.executable))
+    return m.group(1) if m else None
+
+
+def can_install(asset):
+    """(posible, motivo). Sin motivo = no es un caso en el que haya algo que explicar (Windows, desarrollo)."""
+    b = app_bundle()
+    if not b:
+        return False, ""
+    if not asset:
+        return False, "Esta versión no trae el archivo para tu Mac."
+    if "/AppTranslocation/" in b:
+        return False, "macOS está ejecutando la app desde una ubicación temporal. Muévela a Aplicaciones, ábrela desde ahí y vuelve a intentarlo."
+    if not os.access(os.path.dirname(b), os.W_OK):
+        return False, f"No puedo escribir en {os.path.dirname(b)}. Mueve la app a Aplicaciones."
+    return True, ""
 
 
 def check_update():
@@ -1242,31 +1296,163 @@ def check_update():
     if _UPD["data"] is not None and now() - _UPD["t"] < 6 * 3600:
         return _UPD["data"]
     try:
-        req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
-                                     headers={"User-Agent": "CoordinadorRF", "Accept": "application/vnd.github+json"})
-        ctxs = [ssl.create_default_context()]  # los certificados del sistema; en la app empaquetada puede faltar alguno…
-        try:
-            import certifi
-            ctxs.append(ssl.create_default_context(cafile=certifi.where()))  # …y entonces vale el paquete de certifi
-        except Exception:
-            pass
-        err = None
-        for ctx in ctxs:
-            try:
-                with urllib.request.urlopen(req, timeout=6, context=ctx) as r:
-                    j = json.load(r)
-                break
-            except (ssl.SSLError, urllib.error.URLError) as e:
-                err = e
-        else:
-            raise err
+        api = os.environ.get(UPDATE_TEST) or f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
+        with _urlopen(urllib.request.Request(api, headers=UA), 6) as r:
+            j = json.load(r)
         tag = str(j.get("tag_name") or "")
+        asset = None
+        for a in j.get("assets") or []:
+            dg = str(a.get("digest") or "")
+            if a.get("name") == mac_asset_name() and dg.startswith("sha256:") and asset_url_ok(a.get("browser_download_url")):
+                asset = {"name": a["name"], "url": a["browser_download_url"], "digest": dg, "size": int(a.get("size") or 0)}
+        newer = _ver(tag) > _ver(VERSION)
+        ok, why = can_install(asset)
         data = {"current": VERSION, "latest": tag.lstrip("v"), "url": j.get("html_url") or f"https://github.com/{UPDATE_REPO}/releases",
-                "newer": _ver(tag) > _ver(VERSION), "notes": str(j.get("body") or "")[:600]}
+                "newer": newer, "notes": str(j.get("body") or "")[:600], "asset": asset, "canInstall": bool(newer and ok), "installReason": why if newer else ""}
     except Exception as e:
         data = {"current": VERSION, "error": str(e)[:120]}
     _UPD.update(t=now(), data=data)
     return data
+
+
+# --- Actualización con un clic (solo la app de Mac) -------------------------------------------------------
+# Descarga la release, comprueba su SHA-256 (el que publica GitHub), la extrae junto a la app instalada y deja
+# que un script la sustituya cuando esta salga. Si la nueva no responde en 60 s, el script deshace el cambio.
+UPD_ST = {"state": "idle", "pct": 0, "msg": "", "error": ""}
+UPD_LOCK = threading.Lock()
+
+UPDATE_SCRIPT = r"""#!/bin/bash
+# Coordinador RF: sustituye la app por la nueva versión cuando la actual ha salido y la vuelve a abrir.
+# Si la nueva no responde en 60 s, vuelve a la anterior. Uso: instalar.sh PID APP_ACTUAL APP_NUEVA CARPETA_COPIA PUERTO LOG [argumentos de la app…]
+PID="$1"; OLD="$2"; NEW="$3"; BAK="$4"; PORT="$5"; LOG="$6"; shift 6
+OPENER="${CRF_OPENER:-open}"
+STAGE="$(dirname "$NEW")"
+log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+launch() { if [ "$#" -gt 0 ]; then "$OPENER" "$OLD" --args "$@"; else "$OPENER" "$OLD"; fi; }
+for _ in $(seq 1 $(( ${CRF_EXIT_WAIT:-120} * 2 ))); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
+if kill -0 "$PID" 2>/dev/null; then log "la app no se cerró: no se toca nada"; rm -rf "$STAGE"; exit 1; fi
+mkdir -p "$BAK"; rm -rf "$BAK/previous.app"
+if ! mv "$OLD" "$BAK/previous.app"; then log "no se pudo apartar la versión actual"; rm -rf "$STAGE"; launch "$@"; exit 1; fi
+if ! mv "$NEW" "$OLD"; then log "no se pudo colocar la versión nueva: se deja la anterior"; mv "$BAK/previous.app" "$OLD"; rm -rf "$STAGE"; launch "$@"; exit 1; fi
+rm -rf "$STAGE"
+command -v xattr >/dev/null 2>&1 && xattr -dr com.apple.quarantine "$OLD" 2>/dev/null
+log "versión nueva colocada: abriéndola"
+launch "$@"
+for _ in $(seq 1 $(( ${CRF_HEALTH_WAIT:-60} * 2 ))); do
+  if curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT/"; then log "la versión nueva responde: actualización terminada"; exit 0; fi
+  sleep 0.5
+done
+log "la versión nueva no responde en ${CRF_HEALTH_WAIT:-60} s: se vuelve a la anterior"
+pkill -f "$OLD/Contents/MacOS/" 2>/dev/null; sleep 1
+rm -rf "$OLD"
+mv "$BAK/previous.app" "$OLD" && launch "$@"
+exit 1
+"""
+
+
+def upd_set(**kw):
+    with UPD_LOCK:
+        UPD_ST.update(kw)
+
+
+def update_download(asset, dest_dir):
+    """Descarga el zip y comprueba tamaño y SHA-256. Si algo no cuadra, lo borra y falla: nunca se instala algo sin verificar."""
+    if not asset_url_ok(asset.get("url")):
+        raise ValueError("dirección de descarga no permitida")
+    size = int(asset.get("size") or 0)
+    if not 0 < size <= 300_000_000:
+        raise ValueError("tamaño de la descarga no válido")
+    want = str(asset.get("digest") or "").split(":", 1)[-1].lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", want):
+        raise ValueError("falta la huella SHA-256 de la descarga")
+    os.makedirs(dest_dir, exist_ok=True)
+    path = os.path.join(dest_dir, "descarga.zip")
+    h, got = hashlib.sha256(), 0
+    try:
+        with _urlopen(urllib.request.Request(asset["url"], headers={"User-Agent": "CoordinadorRF"}), 30) as r, open(path, "wb") as f:
+            while True:
+                chunk = r.read(65536)
+                if not chunk:
+                    break
+                got += len(chunk)
+                if got > size + 1024:
+                    raise ValueError("la descarga es más grande de lo anunciado")
+                h.update(chunk)
+                f.write(chunk)
+                upd_set(pct=int(100 * got / size), msg=f"Descargando… {int(100 * got / size)} %")
+        if got != size:
+            raise ValueError("la descarga ha quedado incompleta")
+        if h.hexdigest() != want:
+            raise ValueError("la descarga no coincide con la huella SHA-256 publicada: no se instala")
+    except Exception:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def verify_new_app(new, old):
+    """La app descargada tiene que ser de Coordinador RF, estar completa y con la firma íntegra."""
+    with open(os.path.join(new, "Contents", "Info.plist"), "rb") as f:
+        pn = plistlib.load(f)
+    with open(os.path.join(old, "Contents", "Info.plist"), "rb") as f:
+        po = plistlib.load(f)
+    if pn.get("CFBundleIdentifier") != po.get("CFBundleIdentifier"):
+        raise ValueError("el paquete descargado no es de Coordinador RF")
+    if not os.access(os.path.join(new, "Contents", "MacOS", str(pn.get("CFBundleExecutable") or "")), os.X_OK):
+        raise ValueError("la app descargada está incompleta")
+    r = subprocess.run(["codesign", "--verify", "--deep", "--strict", new], capture_output=True, timeout=120)
+    if r.returncode:
+        raise ValueError("la firma de la app descargada no es válida")
+
+
+def _update_worker(info):
+    old = app_bundle()
+    base = os.path.join(config_dir(), "actualizacion")
+    stage = os.path.join(os.path.dirname(old), ".Coordinador RF.actualizando")  # junto a la app: mismo disco, el cambio es instantáneo
+    try:
+        shutil.rmtree(base, ignore_errors=True)
+        zpath = update_download(info["asset"], base)
+        upd_set(state="comprobando", pct=100, msg="Comprobando la descarga…")
+        shutil.rmtree(stage, ignore_errors=True)
+        os.makedirs(stage)
+        subprocess.run(["ditto", "-x", "-k", zpath, stage], check=True, timeout=180)
+        apps = [d for d in os.listdir(stage) if d.endswith(".app")]
+        if len(apps) != 1:
+            raise ValueError("el zip descargado no tiene el formato esperado")
+        new = os.path.join(stage, apps[0])
+        verify_new_app(new, old)
+        upd_set(state="instalando", msg="Instalando…")
+        script = os.path.join(base, "instalar.sh")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(UPDATE_SCRIPT)
+        os.chmod(script, 0o755)
+        args = [a for a in sys.argv[1:] if not a.startswith("-psn_")]
+        analyzer_shutdown()  # libera la sesión de escaneo del AD600 antes de cerrar
+        subprocess.Popen(["/bin/bash", script, str(os.getpid()), old, new, os.path.join(config_dir(), "versiones-anteriores"), str(PORT),
+                          os.path.join(config_dir(), "actualizacion.log")] + args,
+                         start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        upd_set(state="reiniciando", msg="Reiniciando Coordinador RF…")
+        time.sleep(1.5)  # que la interfaz alcance a ver el aviso
+        os._exit(0)
+    except Exception as e:
+        shutil.rmtree(stage, ignore_errors=True)
+        upd_set(state="error", error=str(e)[:240] or "error desconocido")
+
+
+def update_install():
+    with UPD_LOCK:
+        if UPD_ST["state"] in ("descargando", "comprobando", "instalando", "reiniciando"):
+            raise ValueError("ya hay una actualización en curso")
+    info = check_update()
+    if not info.get("newer"):
+        raise ValueError("ya tienes la última versión")
+    if not info.get("canInstall"):
+        raise ValueError(info.get("installReason") or "Solo la app de Mac instalada puede actualizarse sola. Descarga la nueva versión desde la página de la release.")
+    upd_set(state="descargando", pct=0, msg="Descargando… 0 %", error="")
+    threading.Thread(target=_update_worker, args=(info,), daemon=True).start()
 
 
 def open_url(url):
@@ -1403,6 +1589,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({"text": diagnostics()})
         elif path == "/update":
             self.reply(check_update())
+        elif path == "/update/status":
+            with UPD_LOCK:
+                self.reply(dict(UPD_ST))
         elif path == "/serial/ports":
             ports = list_serial()
             if ports is None:
@@ -1462,6 +1651,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({"ok": True, "path": save_file(body.get("kind"), body.get("name"), body.get("content"), bool(body.get("open")))})
             if path == "/notify":
                 notify(body.get("title"), body.get("text"))
+                return self.reply({"ok": True})
+            if path == "/update/install":
+                update_install()
                 return self.reply({"ok": True})
             if path == "/open":
                 open_url(body.get("url"))
@@ -1694,6 +1886,10 @@ def main():
         print(f"El puerto {a.puerto} lo está usando otro programa. Prueba con: python3 puente-rf.py --puerto 8766")
         sys.exit(1)
     KEY = load_key()
+    try:
+        os.remove(os.path.join(config_dir(), "actualizacion", "descarga.zip"))  # resto de una actualización anterior
+    except OSError:
+        pass
     PORT = a.puerto
     if a.demo:
         demo_shure(22020)

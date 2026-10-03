@@ -6,14 +6,12 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
-La app avisa dentro de la ventana cuando haya una versión nueva.
+**Novedades de la 1.6**
+- **Actualización con un clic en Mac:** cuando haya una versión nueva, el aviso de la ventana trae el botón *Actualizar ahora*.
+  La app descarga la release, comprueba su huella SHA-256, se sustituye y se reabre; guarda la versión anterior y, si la nueva no
+  arranca, vuelve sola a la anterior. Requiere que la app esté en Aplicaciones.
+- Esta vez, si vienes de la 1.5 o anterior, hay que instalarla a mano; desde aquí en adelante, con un clic.
 
-**Novedades de la 1.5**
-- Varios proyectos con nombre, guardados también como archivos en Documentos/Coordinador RF/Proyectos.
-- Nombre para cada canal (voz, guitarra…), que se ve en el monitor, el informe y el CSV.
-- Informe imprimible o PDF de la coordinación.
-- Deshacer y rehacer (⌘Z / ⇧⌘Z).
-- Avisos del monitor: sonido y notificación del Mac, y registro exportable.
-- Importar receptores de red a la coordinación, enlazar canales virtuales y enviar las frecuencias.
-- Analizador de espectro Shure AD600 por red (experimental, sin probar todavía con un equipo real).
-- Botón de diagnóstico, aviso de versión nueva y versión para Mac Intel.
+Novedades de la 1.5: varios proyectos con copia en disco, nombre por canal, informe imprimible/PDF, deshacer y rehacer, avisos del
+monitor, receptores de red (importar, asignar y enviar), analizador Shure AD600 por red (experimental), diagnóstico, aviso de
+versión nueva y versión para Mac Intel.

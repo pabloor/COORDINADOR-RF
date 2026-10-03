@@ -60,6 +60,23 @@ jobs:
           name: Coordinador RF ${{ env.TAG }}
           body_path: .github/release-notes.md
 
+  probar-actualizacion:
+    # Actualización completa sobre la app real: descarga manipulada rechazada y actualización buena (ver tests/updater_mac.sh)
+    needs: mac
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest, suffix: "" }
+          - { runner: macos-15-intel, suffix: "-Intel" }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: "Coordinador-RF-Mac${{ matrix.suffix }}" }
+      - run: bash tests/updater_mac.sh "Coordinador-RF-Mac${{ matrix.suffix }}.zip"
+
   windows:
     runs-on: windows-latest
     timeout-minutes: 20

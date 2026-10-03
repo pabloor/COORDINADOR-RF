@@ -1,7 +1,7 @@
 """Pruebas de extremo a extremo de Coordinador RF: puente real + interfaz en Chromium (Playwright).
 Cada bloque arranca su propio puente con una carpeta de usuario temporal, así que no se afectan entre sí.
 Uso:  python3 tests/e2e.py [bloque ...]      (sin argumentos, todos).   PW_CHROMIUM=/ruta/al/chromium si hace falta."""
-import contextlib, glob, json, os, re, socket, subprocess, sys, tempfile, time, urllib.request
+import contextlib, functools, glob, hashlib, http.server, importlib.util, json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.request
 from playwright.sync_api import sync_playwright
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,13 +20,13 @@ def free_port():
 
 
 @contextlib.contextmanager
-def bridge(kind="demo"):
+def bridge(kind="demo", env=None):
     home, port = tempfile.mkdtemp(prefix="crf-"), free_port()
     log = open(os.path.join(home, "bridge.log"), "w")
     cmd = [sys.executable, os.path.join(ROOT, "puente-rf.py"), "--sin-navegador", "--puerto", str(port)] + (["--demo"] if kind == "demo" else [])
     if kind == "ad600":
         cmd = [sys.executable, os.path.join(ROOT, "tests", "ad600_harness.py"), str(port)]
-    pr = subprocess.Popen(cmd, env=dict(os.environ, HOME=home, AD600_ENGINE_SCRATCH=os.path.join(home, "ad600")), stdout=log, stderr=subprocess.STDOUT)
+    pr = subprocess.Popen(cmd, env=dict(os.environ, HOME=home, AD600_ENGINE_SCRATCH=os.path.join(home, "ad600"), **(env or {})), stdout=log, stderr=subprocess.STDOUT)
     url = f"http://127.0.0.1:{port}"
     for _ in range(60):
         try:
@@ -279,7 +279,151 @@ def t_ad600(B):
         ctx.close()
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600}
+
+def _puente():
+    spec = importlib.util.spec_from_file_location("puente", os.path.join(ROOT, "puente-rf.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+@contextlib.contextmanager
+def static_server(directory):
+    class Q(http.server.ThreadingHTTPServer):
+        def handle_error(self, request, client_address):  # clientes que cortan a propósito: sin ruido
+            pass
+    H = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+    H.log_message = lambda *a, **k: None
+    srv = Q(("127.0.0.1", free_port()), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        yield srv.server_address[1]
+    finally:
+        srv.shutdown()
+
+
+def t_actualizacion(B):
+    print("Actualización con un clic (descarga verificada, script de relevo, interfaz)")
+    m = _puente()
+    # ---- descarga: solo se acepta lo que coincide con la huella publicada
+    srv_dir = tempfile.mkdtemp()
+    data = os.urandom(400_000)
+    open(os.path.join(srv_dir, "a.zip"), "wb").write(data)
+    good = "sha256:" + hashlib.sha256(data).hexdigest()
+    with static_server(srv_dir) as port:
+        url = f"http://127.0.0.1:{port}/a.zip"
+        def dl(asset, test_mode=True):
+            (os.environ.__setitem__ if test_mode else os.environ.pop)(*((m.UPDATE_TEST, "x") if test_mode else (m.UPDATE_TEST, None)))
+            d = tempfile.mkdtemp()
+            try:
+                return m.update_download(asset, d), d
+            except ValueError as e:
+                return str(e), d
+        r, d = dl({"url": url, "digest": good, "size": len(data)})
+        check("descarga con la huella correcta", os.path.isfile(os.path.join(d, "descarga.zip")), r)
+        for nombre, asset, modo in [
+            ("huella falsa", {"url": url, "digest": "sha256:" + "0" * 64, "size": len(data)}, True),
+            ("tamaño anunciado menor que el real", {"url": url, "digest": good, "size": 1000}, True),
+            ("tamaño anunciado mayor que el real", {"url": url, "digest": good, "size": len(data) + 5000}, True),
+            ("sin huella", {"url": url, "digest": "", "size": len(data)}, True),
+            ("dirección que no es de la release", {"url": "https://evil.example/a.zip", "digest": good, "size": len(data)}, False),
+            ("http fuera del modo de pruebas", {"url": url, "digest": good, "size": len(data)}, False)]:
+            r, d = dl(asset, modo)
+            check(f"se rechaza: {nombre}", not os.path.exists(os.path.join(d, "descarga.zip")) and not os.path.isfile(r), r)
+        os.environ.pop(m.UPDATE_TEST, None)
+    # ---- script de relevo con «apps» de mentira y un opener falso
+    def relevo(new_ok, exit_wait="5", health="4", pid_alive=False, args=()):
+        t = tempfile.mkdtemp(prefix="upd-")
+        port = free_port()
+        old, new, bak, log = f"{t}/Aplic/Coordinador RF.app", f"{t}/stage/Coordinador RF.app", f"{t}/bak", f"{t}/log.txt"
+        for d, mark, ok in ((old, "viejo", True), (new, "nuevo", new_ok)):
+            os.makedirs(d)
+            open(f"{d}/id", "w").write(mark)
+            if ok:
+                open(f"{d}/ok", "w").write("1")
+        op = f"{t}/opener.sh"
+        open(op, "w").write(f'#!/bin/bash\necho "abre $@" >> "{t}/aperturas.txt"\nif [ -f "$1/ok" ]; then (cd "$1" && nohup python3 -m http.server {port} --bind 127.0.0.1 >/dev/null 2>&1 &); fi\n')
+        os.chmod(op, 0o755)
+        open(f"{t}/s.sh", "w").write(m.UPDATE_SCRIPT)
+        app = subprocess.Popen(["sleep", "1000" if pid_alive else "1"])
+        threading.Thread(target=app.wait, daemon=True).start()
+        subprocess.run(["bash", f"{t}/s.sh", str(app.pid), old, new, bak, str(port), log, *args], timeout=60,
+                       env=dict(os.environ, CRF_OPENER=op, CRF_EXIT_WAIT=exit_wait, CRF_HEALTH_WAIT=health))
+        app.kill()
+        subprocess.run(["pkill", "-f", f"http.server {port}"])
+        rd = lambda f: open(f).read() if os.path.exists(f) else None
+        return {"app": rd(f"{old}/id"), "copia": rd(f"{bak}/previous.app/id"), "stage": os.path.exists(t + "/stage"),
+                "aperturas": (rd(f"{t}/aperturas.txt") or "").strip().splitlines(), "log": rd(log) or ""}
+    a = relevo(True, args=("--sin-navegador", "--puerto", "8799"))
+    check("relevo: la versión nueva queda instalada y la anterior guardada", a["app"] == "nuevo" and a["copia"] == "viejo" and not a["stage"], a)
+    check("relevo: se reabre con los mismos argumentos", a["aperturas"] and a["aperturas"][0].endswith("--args --sin-navegador --puerto 8799"), a["aperturas"])
+    bb = relevo(False)
+    check("relevo: si la nueva no responde se vuelve a la anterior y se reabre", bb["app"] == "viejo" and len(bb["aperturas"]) == 2 and "se vuelve a la anterior" in bb["log"], bb)
+    c = relevo(True, exit_wait="3", pid_alive=True)
+    check("relevo: si la app no se cierra, no se toca nada", c["app"] == "viejo" and not c["aperturas"] and not c["stage"], c)
+    # ---- API del puente con una «release» local
+    rel = tempfile.mkdtemp()
+    asset = m.mac_asset_name()
+    open(os.path.join(rel, asset), "wb").write(data)
+    with static_server(rel) as port:
+        json.dump({"tag_name": "v99.0", "html_url": "https://github.com/pabloor/COORDINADOR-RF/releases/tag/v99.0", "body": "",
+                   "assets": [{"name": asset, "browser_download_url": f"http://127.0.0.1:{port}/{asset}", "digest": good, "size": len(data)}]},
+                  open(os.path.join(rel, "latest.json"), "w"))
+        with bridge(env={m.UPDATE_TEST: f"http://127.0.0.1:{port}/latest.json"}) as br:
+            ctx, pg = B.page(br["url"])
+            key = pg.evaluate("()=>state.net.key")
+            j = json.load(urllib.request.urlopen(f"{br['url']}/update?k={key}"))
+            check("el puente ve la versión nueva y el archivo que le corresponde", j.get("newer") and (j.get("asset") or {}).get("name") == asset, j)
+            check("fuera de la app de Mac instalada no ofrece actualizar solo", j.get("canInstall") is False)
+            try:
+                urllib.request.urlopen(urllib.request.Request(f"{br['url']}/update/install?k={key}", data=b"{}", headers={"Content-Type": "application/json"}))
+                rej = ""
+            except urllib.error.HTTPError as e:
+                rej = json.load(e).get("error", "")
+            check("pedir la instalación fuera de la app instalada se rechaza con un mensaje", "Mac instalada" in rej, rej)
+            ctx.close()
+    # ---- interfaz con respuestas simuladas
+    with bridge() as br:
+        def pagina(upd, status_seq=None, install=None):
+            ctx = B.b.new_context(viewport={"width": 1500, "height": 900})
+            pg = ctx.new_page()
+            pg.on("pageerror", lambda e: B.errors.append(str(e)))
+            pg.dialogs = []
+            pg.on("dialog", lambda d: (pg.dialogs.append(d.message), d.accept()))
+            J = lambda r, o, code=200: r.fulfill(status=code, content_type="application/json", body=json.dumps(o))
+            pg.route("**/update?*", lambda r: J(r, upd))
+            seq = list(status_seq or [])
+            pg.route("**/update/status?*", lambda r: (J(r, seq.pop(0)) if seq else r.abort()))
+            pg.route("**/update/install?*", lambda r: J(r, install or {"ok": True}, 400 if install else 200))
+            pg.goto(br["url"])
+            pg.wait_for_timeout(1800)
+            return ctx, pg
+        base = {"current": "1.5", "latest": "9.9", "url": "https://github.com/pabloor/COORDINADOR-RF/releases/tag/v9.9", "newer": True, "notes": "", "asset": {}}
+        ctx, pg = pagina(dict(base, canInstall=True, installReason=""))
+        check("si se puede, el aviso ofrece «Actualizar ahora»", pg.is_visible("#updInstall") and pg.inner_text("#updGo") == "Ver novedades")
+        ctx.close()
+        why = "Muévela a Aplicaciones, ábrela desde ahí y vuelve a intentarlo."
+        ctx, pg = pagina(dict(base, canInstall=False, installReason=why))
+        check("si no se puede, explica por qué y ofrece la descarga a mano", not pg.is_visible("#updInstall") and why in pg.inner_text("#updTxt") and pg.inner_text("#updGo") == "Ver novedades y descargar")
+        ctx.close()
+        seq = [{"state": "descargando", "pct": 30, "msg": "Descargando… 30 %", "error": ""}, {"state": "instalando", "pct": 100, "msg": "Instalando…", "error": ""},
+               {"state": "reiniciando", "pct": 100, "msg": "Reiniciando Coordinador RF…", "error": ""}]
+        ctx, pg = pagina(dict(base, canInstall=True, installReason=""), seq)
+        pg.evaluate("()=>{window.__t=[];new MutationObserver(()=>window.__t.push(document.querySelector('#updTxt').textContent)).observe(document.querySelector('#updTxt'),{childList:true,characterData:true,subtree:true})}")
+        pg.click("#updInstall")
+        pg.wait_for_timeout(4000)
+        t = " | ".join(pg.evaluate("()=>[...new Set(window.__t)]"))
+        check("pide confirmación y muestra descarga, instalación y reinicio", pg.dialogs and "9.9" in pg.dialogs[0] and "Descargando… 30 %" in t and "Instalando" in t and "Reiniciando" in t, t)
+        ctx.close()
+        err = "la descarga no coincide con la huella SHA-256 publicada: no se instala"
+        ctx, pg = pagina(dict(base, canInstall=True, installReason=""), [{"state": "error", "pct": 0, "msg": "", "error": err}])
+        pg.click("#updInstall")
+        pg.wait_for_timeout(1800)
+        check("ante un error lo cuenta y deja la descarga manual", err in pg.inner_text("#updTxt") and pg.is_visible("#updGo") and pg.is_enabled("#updInstall"))
+        ctx.close()
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

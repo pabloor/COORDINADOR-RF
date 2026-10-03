@@ -209,7 +209,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
   <button class="btn primary" id="btnCoord">Coordinar frecuencias</button>
 </header>
 
-<div class="updbar" id="updBar" hidden><span id="updTxt"></span><button class="btn small primary" id="updGo">Ver novedades y descargar</button><button class="btn small ghost" id="updNo">Ahora no</button></div>
+<div class="updbar" id="updBar" hidden><span id="updTxt"></span><button class="btn small primary" id="updInstall" hidden>Actualizar ahora</button><button class="btn small primary" id="updGo">Ver novedades y descargar</button><button class="btn small ghost" id="updNo">Ahora no</button></div>
 
 <div class="app" id="viewCoord">
 <aside>
@@ -2158,18 +2158,51 @@ $("#dgCopy").onclick=async()=>{toast(await copyText($("#dgText").value)?"Diagnó
 
 /* ---------- Aviso de versión nueva ----------
    El puente consulta la última release publicada; si hay una más nueva se avisa una vez por versión. */
-let updChecked=false,updInfo=null;
+let updChecked=false,updInfo=null,updBusy=false;
+function showUpdBar(){
+  const j=updInfo;if(!j)return;
+  $("#updTxt").textContent=`Hay una versión nueva de Coordinador RF: ${j.latest} (tienes la ${j.current}).`+(!j.canInstall&&j.installReason?" "+j.installReason:"");
+  $("#updInstall").hidden=!j.canInstall;$("#updGo").textContent=j.canInstall?"Ver novedades":"Ver novedades y descargar";
+  $("#updBar").hidden=false;
+}
 async function checkUpdate(){
   if(updChecked||!diskReady())return;updChecked=true;
   try{
     const j=await diskApi("/update");
     if(!j.newer||localStorage.getItem("coordinador-rf.aviso")===j.latest)return;
-    updInfo=j;$("#updTxt").textContent=`Hay una versión nueva de Coordinador RF: ${j.latest} (tienes la ${j.current}).`;$("#updBar").hidden=false;
+    updInfo=j;showUpdBar();
   }catch(e){}
 }
 $("#updGo").onclick=async()=>{
   if(!updInfo)return;
   try{await diskApi("/open",{url:updInfo.url});}catch(e){window.open(updInfo.url,"_blank");}
+};
+/* Actualización con un clic: el puente descarga, comprueba la huella SHA-256, sustituye la app y la reabre. */
+function setUpdBusy(on,msg){
+  updBusy=on;$("#updInstall").disabled=on;$("#updGo").hidden=on;$("#updNo").hidden=on;
+  if(msg)$("#updTxt").textContent=msg;
+}
+async function pollUpdate(){
+  let lost=0,restarting=false;
+  while(updBusy){
+    await new Promise(r=>setTimeout(r,600));
+    try{
+      const st=await diskApi("/update/status");lost=0;
+      if(st.state==="error"){setUpdBusy(false);$("#updTxt").textContent="No se ha podido actualizar: "+st.error+" Puedes descargar la versión a mano.";$("#updGo").hidden=false;$("#updGo").textContent="Ver novedades y descargar";return;}
+      if(st.state==="reiniciando")restarting=true;
+      $("#updTxt").textContent=(st.msg||"Actualizando…")+(restarting?" Si en un minuto no se abre sola, ábrela desde Aplicaciones.":"");
+    }catch(e){
+      lost++;if(restarting||lost>5){$("#updTxt").textContent="Reiniciando Coordinador RF… Si en un minuto no se abre sola, ábrela desde Aplicaciones.";if(lost>150)return;}
+    }
+  }
+}
+$("#updInstall").onclick=async()=>{
+  if(!updInfo||updBusy)return;
+  const warn=live.src?"\n\nEl analizador conectado se desconectará.":"";
+  if(!confirm(`Se va a actualizar Coordinador RF a la versión ${updInfo.latest}.\n\nLa app se cerrará y se abrirá sola en un minuto. Tus proyectos se conservan.${warn}\n\nNo lo hagas en mitad de un evento. ¿Actualizar ahora?`))return;
+  setUpdBusy(true,"Preparando la actualización…");
+  try{await diskApi("/update/install",{});}catch(e){setUpdBusy(false);showUpdBar();toast("No se puede actualizar: "+e.message);return;}
+  pollUpdate();
 };
 $("#updNo").onclick=()=>{if(updInfo)try{localStorage.setItem("coordinador-rf.aviso",updInfo.latest);}catch(e){}$("#updBar").hidden=true;};
 
