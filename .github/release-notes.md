@@ -6,6 +6,11 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.9**
+- **Receptores Shure (probado con Axient Digital en mente):** los medidores (RF, audio) se piden también canal a canal y las órdenes iniciales se envían por separado.
+  Si un receptor no manda niveles, el monitor lo avisa, y «Diagnóstico» recoge lo que responde el equipo.
+- El aviso de versión nueva se comprueba cada 15 minutos y al volver a la ventana (antes, cada 6 horas).
+
 **Novedades de la 1.8**
 - **Intermodulación al pasar el ratón:** sobre un producto en la franja inferior de la gráfica, el cuadro indica qué portadoras lo producen y se resaltan.
 - **Verificación tras enviar a receptores:** se vuelve a leer cada canal y la tabla marca «Verificado en el receptor» o «No confirmado»; los fallos suenan como alarma.
