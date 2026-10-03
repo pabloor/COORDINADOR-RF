@@ -22,14 +22,16 @@ nueva y se vuelve a abrir. Tus proyectos se conservan, y la versión anterior qu
 
 Condiciones: la app tiene que estar en Aplicaciones (si se abre desde Descargas, macOS la ejecuta en una zona de solo lectura y la app lo
 avisa) y la versión que tengas ya debe llevar esta función (de la 1.5 o anteriores se pasa a mano esta vez). Al no estar firmada por
-Apple, macOS puede volver a pedir los permisos de red local y de Documentos tras actualizar. En Windows el aviso lleva a la descarga.
+Apple, macOS puede volver a pedir los permisos de red local y de Documentos tras actualizar, salvo que las versiones se firmen con un
+certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a la descarga.
 
 ## Qué hace
 
 - **Coordinación:** grupos de equipos con biblioteca Shure/Sennheiser (bandas y reglas de separación), canales de TV,
   exclusiones, escaneos CSV y cálculo de intermodulación (3.º, 5.º, 7.º/9.º y con 3 transmisores).
 - **Gráfica de coordinación:** la barra superior indica la frecuencia de la vista, la del cursor, el canal de TV y la línea
-  seleccionada. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
+  seleccionada. Pasando el ratón por la franja inferior (donde se dibujan los productos de intermodulación) un cuadro indica qué
+  portadoras producen cada producto y se resaltan en la gráfica. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
   bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista.
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (botón *Informe*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).
@@ -40,9 +42,24 @@ Apple, macOS puede volver a pedir los permisos de red local y de Documentos tras
   sonoro y notificación del sistema ante alarmas, y registro exportable a CSV.
 - **Receptores de red (Shure TCP 2202, Sennheiser SSC UDP 45):** el selector *Red por la que buscar* limita la búsqueda a una
   conexión del ordenador (cable, Wi-Fi…) en vez de revisarlas todas. *Importar a la coordinación* crea un grupo con sus frecuencias;
-  *Asignar a receptores* enlaza canales virtuales con canales libres compatibles; *Enviar a receptores* programa las frecuencias.
-- **Espectro en vivo:** RF Explorer, tinySA (USB), simulador y Shure AD600 (red).
+  *Asignar a receptores* enlaza canales virtuales con canales libres compatibles; *Enviar a receptores* programa las frecuencias y después
+  vuelve a leer cada canal: la tabla marca *Verificado en el receptor* o *No confirmado* (con la frecuencia real), y los fallos entran en el registro de alarmas.
+- **Espectro en vivo:** RF Explorer, tinySA (USB), simulador y Shure AD600 (red). *Capturar como escaneo* guarda lo que ve el analizador
+  (el barrido actual o el máximo de 10 s a 2 min) como escaneo del sitio: se funde con el que hubiera (solo sustituye la parte
+  capturada), activa «evitar» y propone un umbral por encima del ruido. La coordinación evita desde ese momento lo que lo supere.
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).
+
+## Firma estable (Mac, opcional)
+
+Sin cuenta de desarrollador de Apple, cada versión se firma «ad hoc» y macOS la ve como una app distinta: puede volver a pedir permisos tras
+actualizar. Para evitarlo, las versiones se pueden firmar con un certificado propio gratuito, el mismo siempre:
+
+1. `bash mac/crear-certificado.sh carpeta` (crea `certificado.p12.base64` y `clave.txt`).
+2. En GitHub → *Settings → Secrets and variables → Actions* crea `MAC_CERT_P12` (contenido de `certificado.p12.base64`) y
+   `MAC_CERT_PASSWORD` (contenido de `clave.txt`).
+3. Las siguientes compilaciones usan `mac/firmar.sh` con ese certificado; `tests/firma_mac.sh` comprueba en CI que dos versiones distintas quedan con la misma identidad.
+
+La primera vez que se pase de la firma ad hoc a la del certificado, macOS pedirá los permisos una vez más; desde ahí se conservan.
 
 ## Shure AD600 (por red) — experimental
 
@@ -67,6 +84,7 @@ con resolución de 50, 100, 350 o 900 kHz y las antenas A–F (o todas a la vez)
 | `ad600/` | Motor de comunicación con el AD600 (código de terceros, MIT, sin modificar: ver `ad600/README.md`) |
 | `tests/` | Pruebas de extremo a extremo (`python3 tests/e2e.py`) con puente real, receptores demo y AD600 simulado |
 | `mac/icono.*` | Iconos |
+| `mac/firmar.sh`, `mac/crear-certificado.sh` | Firma de la app de Mac con certificado propio (opcional) |
 | `.github/workflows/` | `tests.yml` (pruebas) y `build.yml` (compila `.app` para Mac Apple Silicon e Intel y `.exe`, y prueba la actualización completa sobre la app real con `tests/updater_mac.sh`) |
 
 ## Desarrollo

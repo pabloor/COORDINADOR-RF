@@ -6,6 +6,12 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.8**
+- **Intermodulación al pasar el ratón:** sobre un producto en la franja inferior de la gráfica, el cuadro indica qué portadoras lo producen y se resaltan.
+- **Verificación tras enviar a receptores:** se vuelve a leer cada canal y la tabla marca «Verificado en el receptor» o «No confirmado»; los fallos suenan como alarma.
+- **Capturar como escaneo** desde el analizador: barrido actual o máximo de 10 s a 2 min; se funde con el escaneo existente, activa «evitar» y propone el umbral.
+- Firma de la app de Mac con certificado propio opcional, para que macOS conserve los permisos entre versiones.
+
 **Novedades de la 1.7**
 - **Red por la que buscar:** al buscar receptores puedes elegir la conexión (cable, Wi-Fi…) en vez de revisar todas.
 - **Gráfica de coordinación con leyenda:** barra superior con la frecuencia de la vista, la del cursor, el canal de TV y la línea elegida.
