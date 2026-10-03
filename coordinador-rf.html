@@ -154,7 +154,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .pane canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #liveSpec{touch-action:pan-y}
 .pane .cap{position:absolute;right:16px;top:6px;font-size:12px;color:#c9d3df;background:rgba(14,20,38,.75);padding:1px 7px;border-radius:3px;pointer-events:none}
-.mon{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px}
+.mon{flex:1;min-height:0;display:block;overflow:auto}
 .tiles{overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;align-content:start}
 .tile{background:var(--raise);border:1px solid var(--line);border-top:4px solid var(--gc);border-radius:6px;padding:9px 11px 8px}
 .tile.alarm{border-color:var(--im3);border-top-color:var(--gc);box-shadow:0 0 0 1px var(--im3)}
@@ -375,12 +375,6 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
   </div>
   <div class="mon">
     <div class="tiles" id="tiles"></div>
-    <div class="side">
-      <h2>Receptores</h2>
-      <ul id="rxList"></ul>
-      <h2 style="display:flex;justify-content:space-between;align-items:center">Registro <button class="btn small ghost" id="logClear">Borrar</button></h2>
-      <ul id="mlog"></ul>
-    </div>
   </div>
 </section>
 
@@ -1305,7 +1299,7 @@ function setTab(t){
   $("#viewCoord").hidden=t!=="coord";$("#viewMon").hidden=t!=="mon";$("#viewLive").hidden=t!=="live";
   $("#btnCoord").hidden=t!=="coord";$("#status").hidden=t!=="coord";
   if(t==="coord"){net.coordSig="";renderTable();requestAnimationFrame(draw);}
-  if(t==="mon"){renderMonConn();renderTiles(true);renderRxList(true);renderSide();}
+  if(t==="mon"){renderMonConn();renderTiles(true);}
   if(t==="live"){syncLiveControls();renderLiveStatus();requestAnimationFrame(()=>{drawLive();clearWater();});}
 }
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b)setTab(b.dataset.tab);});
@@ -1751,7 +1745,7 @@ function monitorTick(now){
     if(prev&&prev.t!==s.t&&(s.alarm||prev.alarm))logEvent(`${chFull(c.g,c.i)} (${fmt(c.f)}): ${s.t.toLowerCase()}`,s.alarm?s.c:"ok",!!s.alarm);
   }
   updateMonDot();
-  if(tab==="mon"){renderTiles(false);renderSide();}
+  if(tab==="mon"){renderTiles(false);}
 }
 function renderMonConn(){
   const a=state.monitor.alerts,av=` Avisos: sonido ${a.sound?"activado":"desactivado"}, notificación ${a.notify?"activada":"desactivada"}.`;
@@ -1781,18 +1775,8 @@ function renderTiles(force){
     el.classList.toggle("alarm",!!s.alarm||(!!cc&&rxBad(cc)));
   });
 }
-function renderSide(){
-  const hh=d=>d.toTimeString().slice(0,8);
-  $("#mlog").innerHTML=mon.log.length?mon.log.slice(0,60).map(e=>`<li><div><span class="t">${hh(e.t)}</span><span class="s-${e.c}">${esc(e.txt)}</span></div></li>`).join(""):`<li class="s-idle">Sin eventos.</li>`;
-}
-$("#tiles").addEventListener("click",e=>{
-  const b=e.target.closest("[data-exp]");if(!b)return;
-  const k=b.dataset.exp,nx={auto:"on",on:"off",off:"auto"}[state.monitor.expect[k]||"auto"];
-  if(nx==="auto")delete state.monitor.expect[k];else state.monitor.expect[k]=nx;
-  b.dataset.v=nx;b.textContent=EXP_TXT[nx];save();
-  mon.st.set(k,chStatus(k,mon.lv.get(k)??null));renderTiles(false);
-});
-$("#logClear").addEventListener("click",()=>{mon.log=[];renderSide();});
+/* El registro de eventos ya no tiene panel: se guarda en memoria y se exporta o se borra desde el menú Monitor. */
+function clearLog(){mon.log=[];toast("Registro de eventos borrado.");}
 
 /* ======================================================================
    TELEMETRÍA DE RECEPTORES (a través de puente-rf.py)
@@ -1974,39 +1958,6 @@ function rxBlock(ch){
     ${al.map(x=>`<span class="badge${x.bad?"":" w"}">${esc(x.t)}</span>`).join("")}${c.raw&&c.rf==null?`<div class="s-idle">Medición en formato no reconocido: ${esc(c.raw)}</div>`:""}${r.dev.kind==="shure"&&r.dev.online&&r.dev.up>10&&!r.dev.samples&&c.rf==null?`<div class="s-warn">Este receptor no envía niveles (RF y audio). Pulsa «Diagnóstico» y copia el resultado para revisarlo.</div>`:""}`;
 }
 function rxBad(ch){const r=net.snap&&rxFor(ch.f);return !!r&&rxAlerts(r,state.monitor.expect[ch.key]||"auto").some(a=>a.bad);}
-function renderRxList(force){
-  const el=$("#rxList");
-  if(!net.snap){el.innerHTML=`<li class="s-idle">Sin puente conectado. Configúralo en Coordinación, botón Receptores.</li>`;net.rxSig="";return;}
-  const chans=monChannels(),rows=rxList(),coord=new Set(chans.map(c=>c.f));
-  const sig=rows.map(r=>r.dev.id+r.ch+r.c.freq+r.c.name+r.dev.online).join("|")+"#"+[...coord].join(",");
-  if(!force&&sig===net.rxSig)return;net.rxSig=sig;
-  if(!rows.length){el.innerHTML=`<li class="s-idle">El puente aún no tiene canales de receptor.</li>`;return;}
-  const used=new Set(rows.map(r=>r.c.freq));
-  el.innerHTML=rows.map(r=>{
-    const c=r.c,ok=c.freq!=null&&coord.has(c.freq),k=`${esc(r.dev.id)}|${esc(r.ch)}`;
-    const brand=r.dev.kind==="shure"?"Shure":"Sennheiser",free=chans.filter(x=>!used.has(x.f));
-    const mine=x=>{const sr=x.g.model&&libSeries(x.g.model.series);return !!sr&&sr.brand===brand;};
-    const op=x=>`<option value="${x.f}">${esc(chFull(x.g,x.i))}: ${fmt(x.f)}</option>`;
-    const a=free.filter(mine),o=free.filter(x=>!mine(x));
-    const opts=(a.length?`<optgroup label="Grupos ${brand}">${a.map(op).join("")}</optgroup>`:"")+(o.length?`<optgroup label="${a.length?"Otros grupos":"Grupos"}">${o.map(op).join("")}</optgroup>`:"");
-    return `<li><div style="flex:1;min-width:0"><b>${esc(r.label)}</b> <span class="t">${esc(r.where)}</span>
-      <small>${c.freq!=null?fmt(c.freq)+" MHz":"Frecuencia desconocida"}${r.dev.online?"":", receptor desconectado"}</small>
-      ${ok?`<small class="s-ok">Coincide con la coordinación</small>`:`<small class="s-warn">No coincide con ninguna frecuencia coordinada</small>`+
-        (opts&&r.dev.online?`<div style="display:flex;gap:6px;margin-top:4px"><select data-prog="${k}" style="flex:1;min-width:0" aria-label="Frecuencia a programar">${opts}</select><button class="btn small" data-send="${k}">Enviar</button></div>`:"")}
-    </div></li>`;}).join("");
-}
-$("#rxList").addEventListener("click",async e=>{
-  const b=e.target.closest("[data-send]");if(!b)return;
-  const [id,ch]=b.dataset.send.split("|"),khz=+b.parentElement.querySelector("select").value;
-  const r=rxList().find(x=>x.dev.id===id&&x.ch===ch);
-  if(!confirm(`¿Cambiar ${r?r.label+" ("+r.where+")":"el canal"} de ${r&&r.c.freq?fmt(r.c.freq):"?"} a ${fmt(khz)} MHz?\n\nDespués tendrás que sincronizar el emisor con el receptor.`))return;
-  try{
-    const res=await fetch(netBase()+"/frequency"+netQ(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,ch:+ch,khz})});
-    const j=await res.json().catch(()=>({}));if(!res.ok)throw new Error(j.error||("Error "+res.status));
-    toast("Frecuencia enviada. Sincroniza el emisor.");logEvent(`Enviada ${fmt(khz)} MHz a ${r?r.label:id+" canal "+ch}`,"ok");renderSide();
-  }catch(err){toast("No se ha podido enviar: "+err.message);}
-});
-
 /* ---------- Receptores de red y coordinación ----------
    Cada canal de un grupo puede enlazarse con un canal de un receptor de red (e.rx = {d: id del receptor, c: canal}).
    Un canal sin enlace es "virtual": solo existe en la coordinación. Se puede importar un receptor como grupo,
@@ -2159,7 +2110,7 @@ function netChanged(){
     net.prev.set(ch.key,txt);
   }
   net.alarm=any;updateMonDot();refreshCoordRx();
-  if(tab==="mon"){renderTiles(false);renderRxList(false);renderSide();}
+  if(tab==="mon"){renderTiles(false);}
 }
 
 /* ---------- Deshacer y rehacer ----------
@@ -2186,7 +2137,7 @@ function histApply(snap){
     const t=normalize(Object.assign(JSON.parse(JSON.stringify(state)),JSON.parse(snap)));
     state.groups=t.groups;state.tv=t.tv;state.excl=t.excl;state.opts=t.opts;
     selected=null;syncControls();renderGroups();renderTV();analyzeNow();renderTable();monSig="";
-    if(tab==="mon"){renderTiles(true);renderRxList(true);}
+    if(tab==="mon"){renderTiles(true);}
     save();
   }finally{hist.applying=false;}
   updateHistBtns();
@@ -2535,7 +2486,7 @@ function menuMonitor(a){
   if(a==="notif")return sw("#alNotify","Notificación del sistema");
   if(a==="probar"){$("#alTest").click();return true;}
   if(a==="registro"){$("#logExport").click();return true;}
-  if(a==="borrar"){$("#logClear").click();return true;}
+  if(a==="borrar"){clearLog();return true;}
   return false;
 }
 function menuTexto(kind){return kind==="csv"?csvText():kind==="proyecto"?JSON.stringify(exportState()):"";}

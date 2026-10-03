@@ -645,6 +645,7 @@ def t_shure_axient(B):
                     llenas:[0,1].map(i=>q(i)?q(i).querySelectorAll('.cell.on').length:null),
                     cls:[0,1].map(i=>q(i)?q(i).className:null),txt:[0,1].map(i=>q(i)?q(i).innerText.trim():null),title:q(0)?q(0).title:''}}""")
         check("las tarjetas ya no llevan barra ni gráfica de la portadora", bt["graf"] == 0, bt)
+        check("el Monitor ya no tiene panel lateral (lista de receptores y registro)", pg.evaluate("()=>!document.querySelector('#viewMon .side, #rxList, #mlog, #logClear')"))
         check("batería: icono con 5 celdas y tantas llenas como indica el equipo (4 barras → 4)", bt["celdas"] == [5, 5] and bt["llenas"][0] == 4, bt)
         check("sin dato de batería (255): celdas vacías y guion", bt["llenas"][1] == 0 and bt["txt"][1] == "—" and "muted" in bt["cls"][1], bt)
         check("el icono lleva el porcentaje y el detalle al pasar el ratón", bt["txt"][0] == "80 %" and "4 de 5 celdas" in bt["title"], bt)
