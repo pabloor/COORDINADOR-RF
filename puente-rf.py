@@ -76,9 +76,9 @@ class Driver(threading.Thread):
     def note(self, kind, raw):
         """Anota un mensaje recibido: contador por tipo y una muestra legible (los repetidos no llenan el registro)."""
         n = self.counts[kind] = self.counts.get(kind, 0) + 1
-        if n <= 3:
+        if n <= 2:
             self.seen.append(f"{kind}: {raw[:200]}")
-            del self.seen[:-40]
+            del self.seen[:-150]
 
     def chan(self, n):
         return self.ch.setdefault(str(int(n)), {})
@@ -211,7 +211,16 @@ class ShureDriver(Driver):
             elif t[0] == "SAMPLE" and len(t) >= 3 and t[1].isdigit() and t[1] != "0":
                 c = self.chan(t[1])
                 c["t"] = now()
-                if t[2] == "ALL" and len(t) == 6 and len(t[3]) == 2 and t[3].isalpha() and t[4].isdigit() and t[5].isdigit():
+                if (t[2] == "ALL" and len(t) == 12 and t[7].isalpha() and len(t[7]) == 2 and
+                        all(t[i].isdigit() for i in (3, 4, 5, 6, 8, 9, 10, 11))):
+                    # Axient Digital (AD4D/AD4Q): SAMPLE n ALL calidad mapaAudio picoAudio rmsAudio antenas mapaA rssiA mapaB rssiB
+                    # RSSI y audio van con desfase de 120 (dBm y dBFS); calidad 0-5 (255 = sin dato).
+                    q, pk, rms, ra, rb = int(t[3]), int(t[5]), int(t[6]), int(t[9]), int(t[11])
+                    c["qual"] = q if q <= 5 else None
+                    c["af"], c["afPeak"] = rms - 120, pk - 120
+                    c["rfA"], c["rfB"], c["rf"] = ra - 120, rb - 120, max(ra, rb) - 120
+                    c.pop("raw", None)
+                elif t[2] == "ALL" and len(t) == 6 and len(t[3]) == 2 and t[3].isalpha() and t[4].isdigit() and t[5].isdigit():
                     c["ant"], c["rf"], c["af"] = self.ANT.get(t[3], t[3]), int(t[4]) - 128, int(t[5]) - 50
                     c.pop("raw", None)
                 else:
@@ -235,6 +244,14 @@ class ShureDriver(Driver):
             c["bars"] = None if n in (None, 255) else n
         elif key == "BATT_RUN_TIME":
             c["battMin"] = n if n is not None and n < 65533 else None
+        elif key == "TX_BATT_CHARGE_PERCENT":      # Axient Digital
+            c["batt"] = None if n is None or n > 100 else n
+        elif key == "TX_BATT_BARS":
+            c["bars"] = None if n in (None, 255) else n
+        elif key == "TX_BATT_MINS":
+            c["battMin"] = n if n is not None and n < 65533 else None
+        elif key == "TX_MODEL":
+            c["tx"] = None if v in ("UNKN", "UNKNOWN", "") else v
         elif key == "TX_TYPE":
             c["tx"] = None if v == "UNKN" else v
         elif key == "AUDIO_MUTE":
@@ -1264,7 +1281,7 @@ def diagnostics():
         for d in DEVICES.values():
             devs.append(f"  {d.cfg.get('kind')} {d.host}:{d.port} en línea={d.online} error={d.error or '-'} modelo={d.model or '-'}")
             devs.append("    mensajes recibidos: " + (", ".join(f"{k}×{v}" for k, v in sorted(d.counts.items())) or "ninguno"))
-            devs.extend("    · " + x for x in d.seen[-25:])
+            devs.extend("    · " + x for x in d.seen[-80:])
             for n, c in sorted(d.ch.items()):
                 devs.append(f"    canal {n}: " + ", ".join(f"{k}={v}" for k, v in c.items() if k != "t"))
         an = dict(AN_STATE)

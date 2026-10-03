@@ -532,12 +532,11 @@ def t_captura(B):
         ctx.close()
 
 
-def t_shure_sin_medidores(B):
-    print("Receptor Shure que no envía medidores: órdenes por separado y diagnóstico")
+def fake_shure(samples):
+    """Receptor Shure de mentira (TCP). Con samples=True manda, al pedirle METER_RATE, los SAMPLE de un AD4D real."""
     import socket as _s, threading as _t
     got, stop = [], _t.Event()
     srv = _s.socket(); srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1); srv.bind(("127.0.0.1", 0)); srv.listen(2)
-    port = srv.getsockname()[1]
     def serve():
         srv.settimeout(0.5)
         while not stop.is_set():
@@ -558,33 +557,64 @@ def t_shure_sin_medidores(B):
                 got.append(d.decode())
                 for cmd in d.decode().split(">"):
                     if "GET MODEL" in cmd:
-                        c.sendall(b"< REP MODEL {QLXD4                           } >")
+                        c.sendall(b"< REP MODEL {AD4D-A                          } >")
                     if "GET 0 ALL" in cmd:
-                        c.sendall(b"< REP 1 FREQUENCY 530000 >< REP 1 CHAN_NAME {Voz} >< REP 1 BATT_BARS 4 >")
+                        c.sendall(b"< REP 1 FREQUENCY 530000 >< REP 1 CHAN_NAME {Voz} >< REP 1 TX_BATT_BARS 4 >< REP 1 TX_BATT_CHARGE_PERCENT 80 >"
+                                  b"< REP 1 TX_MODEL AD2 >< REP 2 TX_BATT_BARS 255 >< REP 2 TX_BATT_CHARGE_PERCENT 255 >< REP 2 TX_BATT_MINS 65535 >< REP 2 FREQUENCY 540000 >")
+                    if samples and "METER_RATE" in cmd:
+                        c.sendall(b"< SAMPLE 1 ALL 003 003 083 076 BB 07 044 01 030 >< SAMPLE 2 ALL 255 000 005 033 XX 00 012 00 011 >")
     th = _t.Thread(target=serve, daemon=True); th.start()
+    return srv.getsockname()[1], got, stop
+
+
+def _con_receptor(B, br, port, until):
+    ctx, pg = B.page(br["url"])
+    pg.evaluate("async(p)=>{await bridgePost('/devices',[{id:'x1',kind:'shure',host:'127.0.0.1',port:p,name:'AD4D prueba'}])}", port)
+    for _ in range(80):
+        if pg.evaluate("async()=>{const d=(await diskApi('/status')).devices[0];return !!(d&&d.online&&" + until + ")}"):
+            break
+        pg.wait_for_timeout(250)
+    return ctx, pg
+
+
+def t_shure_sin_medidores(B):
+    print("Receptor Shure que no envía medidores: órdenes por separado y diagnóstico")
+    port, got, stop = fake_shure(False)
     with bridge(None) as br:
-        ctx, pg = B.page(br["url"])
-        pg.evaluate("async(p)=>{await bridgePost('/devices',[{id:'x1',kind:'shure',host:'127.0.0.1',port:p,name:'QLX prueba'}])}", port)
-        for _ in range(60):
-            if pg.evaluate("async()=>{const d=(await diskApi('/status')).devices[0];return !!(d&&d.online&&d.channels['1']&&d.channels['1'].bars===4)}"):
-                break
-            pg.wait_for_timeout(250)
+        ctx, pg = _con_receptor(B, br, port, "d.channels['1']&&d.channels['1'].bars===4")
         for _ in range(20):
             if any("SET 1 METER_RATE" in g for g in got):
                 break
             pg.wait_for_timeout(250)
         check("si no llegan medidores se piden también canal a canal", any("SET 1 METER_RATE" in g for g in got), got)
-        check("las órdenes iniciales llegan como mensajes separados", len(got) >= 3 and got[1].strip() == "< GET 0 ALL >" and got[0].strip() == "< GET MODEL >" and any("SET 0 METER_RATE" in g for g in got), got[:4])
+        check("las órdenes iniciales llegan como mensajes separados", len(got) >= 3 and got[0].strip() == "< GET MODEL >" and got[1].strip() == "< GET 0 ALL >" and any("SET 0 METER_RATE" in g for g in got), got[:4])
         st = pg.evaluate("async()=>(await diskApi('/status')).devices[0]")
         check("sin medidores: 0 muestras y los datos de los canales sí llegan (frecuencia, nombre, batería)", st["samples"] == 0 and st["channels"]["1"]["name"] == "Voz" and st["channels"]["1"]["bars"] == 4, st)
         t = pg.evaluate("async()=>(await diskApi('/diagnostics')).text")
-        check("el diagnóstico cuenta los mensajes por tipo y enseña ejemplos", "REP FREQUENCY×1" in t and "REP MODEL" in t and "· REP FREQUENCY: REP 1 FREQUENCY 530000" in t, t[:900])
-        check("el diagnóstico incluye el estado de cada canal", "canal 1:" in t and "name=Voz" in t, t[:800])
+        check("el diagnóstico cuenta los mensajes por tipo y enseña ejemplos", "REP FREQUENCY×2" in t and "REP MODEL" in t and "· REP FREQUENCY: REP 1 FREQUENCY 530000" in t, t[:900])
+        check("el diagnóstico incluye el estado de cada canal", "canal 1:" in t and "name=Voz" in t, t[:900])
         ctx.close()
     stop.set()
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "shure0": t_shure_sin_medidores, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_shure_axient(B):
+    print("Shure Axient Digital (AD4D): medidores en su formato propio")
+    port, got, stop = fake_shure(True)
+    with bridge(None) as br:
+        ctx, pg = _con_receptor(B, br, port, "d.samples>=2")
+        st = pg.evaluate("async()=>(await diskApi('/status')).devices[0]")
+        c1, c2 = st["channels"]["1"], st["channels"]["2"]
+        check("el AD4D se reconoce y entrega muestras", st["model"] == "AD4D-A" and st["samples"] >= 2, st)
+        check("RF por antena y la mayor como nivel del canal (RSSI − 120)", c1["rfA"] == -76 and c1["rfB"] == -90 and c1["rf"] == -76, c1)
+        check("audio RMS y pico (valor − 120)", c1["af"] == -44 and c1["afPeak"] == -37, c1)
+        check("calidad 0-5; 255 = sin dato", c1["qual"] == 3 and c2["qual"] is None, (c1, c2))
+        check("ya no queda el aviso de formato no reconocido", "raw" not in c1 and "raw" not in c2)
+        check("batería y emisor con los nombres de Axient (255 = desconocido)", c1["bars"] == 4 and c1["batt"] == 80 and c1["tx"] == "AD2" and c2["bars"] is None and c2["batt"] is None and c2["battMin"] is None, (c1, c2))
+        ctx.close()
+    stop.set()
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

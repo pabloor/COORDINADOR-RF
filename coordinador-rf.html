@@ -1920,7 +1920,7 @@ function rxBlock(ch){
   const ant=c.ant?` (antena ${c.ant==="-"?"ninguna":c.ant})`:"";
   const life=c.battMin!=null?`, ${Math.floor(c.battMin/60)} h ${String(c.battMin%60).padStart(2,"0")} min`:"";
   return `<div class="rr"><b>${esc(r.label)}</b><span class="s-idle">${esc(r.where)}</span></div>
-    <div class="rr"><span>RF ${c.rf==null?"—":c.rf+" dBm"}${ant}${c.rfq!=null?`, calidad ${c.rfq}%`:""}</span><span>Audio ${c.af==null?"—":c.af+" dBFS"}</span></div>
+    <div class="rr"><span>RF ${c.rf==null?"—":c.rf+" dBm"}${ant}${c.rfA!=null?` (A ${c.rfA}, B ${c.rfB})`:""}${c.rfq!=null?`, calidad ${c.rfq}%`:""}${c.qual!=null?`, calidad ${c.qual}/5`:""}</span><span>Audio ${c.af==null?"—":c.af+" dBFS"}${c.afPeak!=null?` (pico ${c.afPeak})`:""}</span></div>
     <div class="meter"><i style="width:${rfp}%;background:var(--ok)"></i></div>
     <div class="rr"><span>${c.tx?esc(c.tx):"Sin emisor"}</span><span>Batería ${b==null?"—":b+" %"}${life}</span></div>
     ${al.map(x=>`<span class="badge${x.bad?"":" w"}">${esc(x.t)}</span>`).join("")}${c.raw&&c.rf==null?`<div class="s-idle">Medición en formato no reconocido: ${esc(c.raw)}</div>`:""}${r.dev.kind==="shure"&&r.dev.online&&r.dev.up>10&&!r.dev.samples&&c.rf==null?`<div class="s-warn">Este receptor no envía niveles (RF y audio). Pulsa «Diagnóstico» y copia el resultado para revisarlo.</div>`:""}`;
