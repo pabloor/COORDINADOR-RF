@@ -1,7 +1,7 @@
 """Pruebas de extremo a extremo de Coordinador RF: puente real + interfaz en Chromium (Playwright).
 Cada bloque arranca su propio puente con una carpeta de usuario temporal, así que no se afectan entre sí.
 Uso:  python3 tests/e2e.py [bloque ...]      (sin argumentos, todos).   PW_CHROMIUM=/ruta/al/chromium si hace falta."""
-import contextlib, functools, glob, hashlib, http.server, importlib.util, json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.request
+import contextlib, functools, glob, hashlib, http.server, importlib.util, json, os, re, shutil, socket, socketserver, subprocess, sys, tempfile, threading, time, urllib.request
 from playwright.sync_api import sync_playwright
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -233,11 +233,14 @@ def t_alertas_informe(B):
         pg = ctx.new_page()
         pg.route("**/update?*", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps({"current": "1.0", "latest": "9.9", "url": "https://github.com/pabloor/COORDINADOR-RF/releases/tag/v9.9", "newer": True, "notes": ""})))
         pg.goto(br["url"])
-        pg.wait_for_timeout(1800)
+        try:
+            pg.wait_for_selector("#updBar:not([hidden])", timeout=20000)
+        except Exception:
+            pass
         check("aparece el aviso de versión nueva", pg.is_visible("#updBar"))
         pg.click("#updNo")
         pg.reload()
-        pg.wait_for_timeout(1800)
+        pg.wait_for_timeout(4000)
         check("«Ahora no» lo oculta hasta la siguiente versión", not pg.is_visible("#updBar"))
         ctx.close()
 
@@ -290,10 +293,16 @@ def _puente():
 @contextlib.contextmanager
 def static_server(directory):
     class Q(http.server.ThreadingHTTPServer):
+        def server_bind(self):  # sin getfqdn, que en algunas máquinas tarda mucho
+            socketserver.TCPServer.server_bind(self)
+            self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
         def handle_error(self, request, client_address):  # clientes que cortan a propósito: sin ruido
             pass
-    H = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
-    H.log_message = lambda *a, **k: None
+    class Manejador(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a, **k):
+            pass
+    H = functools.partial(Manejador, directory=directory)
     srv = Q(("127.0.0.1", free_port()), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
@@ -396,7 +405,7 @@ def t_actualizacion(B):
             pg.route("**/update/status?*", lambda r: (J(r, seq.pop(0)) if seq else r.abort()))
             pg.route("**/update/install?*", lambda r: J(r, install or {"ok": True}, 400 if install else 200))
             pg.goto(br["url"])
-            pg.wait_for_timeout(1800)
+            pg.wait_for_selector("#updBar:not([hidden])", timeout=20000)
             return ctx, pg
         base = {"current": "1.5", "latest": "9.9", "url": "https://github.com/pabloor/COORDINADOR-RF/releases/tag/v9.9", "newer": True, "notes": "", "asset": {}}
         ctx, pg = pagina(dict(base, canInstall=True, installReason=""))

@@ -38,7 +38,9 @@ mkjson() { cat > "$SERVE/$1" <<JSON
 JSON
 }
 mkjson bad.json "0000000000000000000000000000000000000000000000000000000000000000"; mkjson good.json "$SHA"
-python3 -m http.server "$PORT_SRV" --bind 127.0.0.1 -d "$SERVE" >/dev/null 2>&1 & SRV=$!
+python3 "$(dirname "$0")/serve_dir.py" "$SERVE" "$PORT_SRV" >"$W/srv.log" 2>&1 & SRV=$!
+for _ in $(seq 1 60); do curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT_SRV/good.json" && break; sleep 0.5; done
+curl -s -o /dev/null -m 2 "http://127.0.0.1:$PORT_SRV/good.json" || { cat "$W/srv.log"; fail "el servidor local de la prueba no arranca"; }
 
 start_app() {
   CRF_UPDATE_API="http://127.0.0.1:$PORT_SRV/$1" "$APP/Contents/MacOS/Coordinador RF" --sin-navegador --puerto "$PORT_APP" > "$W/app.log" 2>&1 &
