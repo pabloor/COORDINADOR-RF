@@ -65,13 +65,14 @@ kill "$APID"; wait "$APID" 2>/dev/null; sleep 2
 echo "2) actualización buena"
 start_app good.json; K="$(getkey)"
 curl -s -m 10 -X POST -H 'Content-Type: application/json' -d '{}' "$U/update/install?k=$K" | grep -q '"ok": true' || fail "no acepta la petición de instalar"
-DONE=0; for _ in $(seq 1 150); do
+DONE=0; for _ in $(seq 1 200); do
   if [ -e "$APP/Contents/Resources/MARCA" ] && curl -s -o /dev/null -m 1 "$U/"; then DONE=1; break; fi; sleep 1
 done
 [ "$DONE" = 1 ] || fail "la versión nueva no está instalada y respondiendo"; ok "la versión nueva está instalada y responde"
 kill -0 "$APID" 2>/dev/null && fail "la app antigua sigue en marcha"; ok "la app antigua se cerró"
 BAK="$CFG/versiones-anteriores/previous.app"
 { [ -d "$BAK" ] && [ ! -e "$BAK/Contents/Resources/MARCA" ]; } || fail "no se guardó la versión anterior"; ok "la versión anterior queda guardada"
+for _ in $(seq 1 200); do grep -q "actualización terminada" "$CFG/actualizacion.log" 2>/dev/null && break; sleep 1; done
 grep -q "actualización terminada" "$CFG/actualizacion.log" || fail "el registro no dice que terminó"; ok "el registro de la actualización está completo"
 [ ! -e "$APPDIR/.Coordinador RF.actualizando" ] || fail "quedó la carpeta temporal"; ok "no queda la carpeta temporal"
 codesign --verify --deep --strict "$APP" || fail "la app instalada tiene la firma rota"; ok "la app instalada tiene la firma íntegra"

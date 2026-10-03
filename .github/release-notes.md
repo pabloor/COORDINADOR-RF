@@ -9,7 +9,7 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 **Novedades de la 1.6**
 - **Actualización con un clic en Mac:** cuando haya una versión nueva, el aviso de la ventana trae el botón *Actualizar ahora*.
   La app descarga la release, comprueba su huella SHA-256, se sustituye y se reabre; guarda la versión anterior y, si la nueva no
-  arranca, vuelve sola a la anterior. Requiere que la app esté en Aplicaciones.
+  arranca en unos minutos, vuelve sola a la anterior. Requiere que la app esté en Aplicaciones.
 - Esta vez, si vienes de la 1.5 o anterior, hay que instalarla a mano; desde aquí en adelante, con un clic.
 
 Novedades de la 1.5: varios proyectos con copia en disco, nombre por canal, informe imprimible/PDF, deshacer y rehacer, avisos del

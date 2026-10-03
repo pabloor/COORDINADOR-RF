@@ -1320,13 +1320,13 @@ def check_update():
 
 # --- Actualización con un clic (solo la app de Mac) -------------------------------------------------------
 # Descarga la release, comprueba su SHA-256 (el que publica GitHub), la extrae junto a la app instalada y deja
-# que un script la sustituya cuando esta salga. Si la nueva no responde en 60 s, el script deshace el cambio.
+# que un script la sustituya cuando esta salga. Si la nueva no responde en 150 s (la primera vez puede tardar), el script deshace el cambio.
 UPD_ST = {"state": "idle", "pct": 0, "msg": "", "error": ""}
 UPD_LOCK = threading.Lock()
 
 UPDATE_SCRIPT = r"""#!/bin/bash
 # Coordinador RF: sustituye la app por la nueva versión cuando la actual ha salido y la vuelve a abrir.
-# Si la nueva no responde en 60 s, vuelve a la anterior. Uso: instalar.sh PID APP_ACTUAL APP_NUEVA CARPETA_COPIA PUERTO LOG [argumentos de la app…]
+# Si la nueva no responde en 150 s, vuelve a la anterior. Uso: instalar.sh PID APP_ACTUAL APP_NUEVA CARPETA_COPIA PUERTO LOG [argumentos de la app…]
 PID="$1"; OLD="$2"; NEW="$3"; BAK="$4"; PORT="$5"; LOG="$6"; shift 6
 OPENER="${CRF_OPENER:-open}"
 STAGE="$(dirname "$NEW")"
@@ -1341,11 +1341,11 @@ rm -rf "$STAGE"
 command -v xattr >/dev/null 2>&1 && xattr -dr com.apple.quarantine "$OLD" 2>/dev/null
 log "versión nueva colocada: abriéndola"
 launch "$@"
-for _ in $(seq 1 $(( ${CRF_HEALTH_WAIT:-60} * 2 ))); do
+for _ in $(seq 1 $(( ${CRF_HEALTH_WAIT:-150} * 2 ))); do
   if curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT/"; then log "la versión nueva responde: actualización terminada"; exit 0; fi
   sleep 0.5
 done
-log "la versión nueva no responde en ${CRF_HEALTH_WAIT:-60} s: se vuelve a la anterior"
+log "la versión nueva no responde en ${CRF_HEALTH_WAIT:-150} s: se vuelve a la anterior"
 pkill -f "$OLD/Contents/MacOS/" 2>/dev/null; sleep 1
 rm -rf "$OLD"
 mv "$BAK/previous.app" "$OLD" && launch "$@"

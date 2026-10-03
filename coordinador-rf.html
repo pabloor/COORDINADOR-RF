@@ -2190,16 +2190,16 @@ async function pollUpdate(){
       const st=await diskApi("/update/status");lost=0;
       if(st.state==="error"){setUpdBusy(false);$("#updTxt").textContent="No se ha podido actualizar: "+st.error+" Puedes descargar la versión a mano.";$("#updGo").hidden=false;$("#updGo").textContent="Ver novedades y descargar";return;}
       if(st.state==="reiniciando")restarting=true;
-      $("#updTxt").textContent=(st.msg||"Actualizando…")+(restarting?" Si en un minuto no se abre sola, ábrela desde Aplicaciones.":"");
+      $("#updTxt").textContent=(st.msg||"Actualizando…")+(restarting?" Si en un par de minutos no se abre sola, ábrela desde Aplicaciones.":"");
     }catch(e){
-      lost++;if(restarting||lost>5){$("#updTxt").textContent="Reiniciando Coordinador RF… Si en un minuto no se abre sola, ábrela desde Aplicaciones.";if(lost>150)return;}
+      lost++;if(restarting||lost>5){$("#updTxt").textContent="Reiniciando Coordinador RF… Si en un par de minutos no se abre sola, ábrela desde Aplicaciones.";if(lost>150)return;}
     }
   }
 }
 $("#updInstall").onclick=async()=>{
   if(!updInfo||updBusy)return;
   const warn=live.src?"\n\nEl analizador conectado se desconectará.":"";
-  if(!confirm(`Se va a actualizar Coordinador RF a la versión ${updInfo.latest}.\n\nLa app se cerrará y se abrirá sola en un minuto. Tus proyectos se conservan.${warn}\n\nNo lo hagas en mitad de un evento. ¿Actualizar ahora?`))return;
+  if(!confirm(`Se va a actualizar Coordinador RF a la versión ${updInfo.latest}.\n\nLa app se cerrará y se abrirá sola en uno o dos minutos. Tus proyectos se conservan.${warn}\n\nNo lo hagas en mitad de un evento. ¿Actualizar ahora?`))return;
   setUpdBusy(true,"Preparando la actualización…");
   try{await diskApi("/update/install",{});}catch(e){setUpdBusy(false);showUpdBar();toast("No se puede actualizar: "+e.message);return;}
   pollUpdate();

@@ -17,7 +17,7 @@ En [Releases](https://github.com/pabloor/COORDINADOR-RF/releases/latest):
 La app avisa dentro de la ventana cuando hay una versión nueva. En el **Mac** basta con pulsar **Actualizar ahora**: la app descarga la
 release, comprueba su huella SHA-256 (la que publica GitHub), se cierra liberando antes el AD600 y los receptores, se sustituye por la
 nueva y se vuelve a abrir. Tus proyectos se conservan, y la versión anterior queda guardada en
-`~/Library/Application Support/CoordinadorRF/versiones-anteriores/`. Si la nueva no responde en 60 s, vuelve sola a la anterior
+`~/Library/Application Support/CoordinadorRF/versiones-anteriores/`. Si la nueva no responde en 150 s (la primera vez puede tardar), vuelve sola a la anterior
 (registro en `actualizacion.log`, en esa misma carpeta). Solo actúa cuando pulsas el botón: no la uses en mitad de un evento.
 
 Condiciones: la app tiene que estar en Aplicaciones (si se abre desde Descargas, macOS la ejecuta en una zona de solo lectura y la app lo
