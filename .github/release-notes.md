@@ -6,6 +6,10 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.11**
+- **Monitor más legible:** en cada canal con receptor, RF en 10 puntos, calidad en 5 puntos y audio en 7 LED (RMS y pico);
+  el valor exacto de audio aparece al pasar el ratón. Los niveles por antena van en su propia línea.
+
 **Novedades de la 1.10**
 - **Shure Axient Digital (AD4D/AD4Q):** el monitor ya interpreta sus medidores: RF por antena, audio RMS y pico, calidad 0-5, batería y emisor.
   Los niveles usan el desfase habitual (RSSI y audio − 120); contrástalos con la pantalla del equipo y avisa si difieren.
