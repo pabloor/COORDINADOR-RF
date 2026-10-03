@@ -1923,7 +1923,7 @@ function rxBlock(ch){
     <div class="rr"><span>RF ${c.rf==null?"—":c.rf+" dBm"}${ant}${c.rfq!=null?`, calidad ${c.rfq}%`:""}</span><span>Audio ${c.af==null?"—":c.af+" dBFS"}</span></div>
     <div class="meter"><i style="width:${rfp}%;background:var(--ok)"></i></div>
     <div class="rr"><span>${c.tx?esc(c.tx):"Sin emisor"}</span><span>Batería ${b==null?"—":b+" %"}${life}</span></div>
-    ${al.map(x=>`<span class="badge${x.bad?"":" w"}">${esc(x.t)}</span>`).join("")}${c.raw&&c.rf==null?`<div class="s-idle">Medición en formato no reconocido: ${esc(c.raw)}</div>`:""}`;
+    ${al.map(x=>`<span class="badge${x.bad?"":" w"}">${esc(x.t)}</span>`).join("")}${c.raw&&c.rf==null?`<div class="s-idle">Medición en formato no reconocido: ${esc(c.raw)}</div>`:""}${r.dev.kind==="shure"&&r.dev.online&&r.dev.up>10&&!r.dev.samples&&c.rf==null?`<div class="s-warn">Este receptor no envía niveles (RF y audio). Pulsa «Diagnóstico» y copia el resultado para revisarlo.</div>`:""}`;
 }
 function rxBad(ch){const r=net.snap&&rxFor(ch.f);return !!r&&rxAlerts(r,state.monitor.expect[ch.key]||"auto").some(a=>a.bad);}
 function renderRxList(force){

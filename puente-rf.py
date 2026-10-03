@@ -69,6 +69,16 @@ class Driver(threading.Thread):
         self.model = ""
         self.ch = {}  # "1" -> {freq, name, rf, af, ant, batt, bars, battMin, tx, mute, txMute, interf, warnings, t}
         self.last_rx = 0.0
+        self.counts = {}          # tipo de mensaje -> cuántos han llegado (para el diagnóstico)
+        self.seen = []            # primeros mensajes de cada tipo y últimos recibidos, tal cual (para el diagnóstico)
+        self.t_connect = 0.0
+
+    def note(self, kind, raw):
+        """Anota un mensaje recibido: contador por tipo y una muestra legible (los repetidos no llenan el registro)."""
+        n = self.counts[kind] = self.counts.get(kind, 0) + 1
+        if n <= 3:
+            self.seen.append(f"{kind}: {raw[:200]}")
+            del self.seen[:-40]
 
     def chan(self, n):
         return self.ch.setdefault(str(int(n)), {})
@@ -77,7 +87,8 @@ class Driver(threading.Thread):
         with LOCK:
             return {"id": self.id, "kind": self.cfg["kind"], "host": self.host, "port": self.port,
                     "name": self.cfg.get("name", ""), "online": self.online, "error": self.error,
-                    "model": self.model, "channels": {k: dict(v) for k, v in self.ch.items()}}
+                    "model": self.model, "channels": {k: dict(v) for k, v in self.ch.items()},
+                    "samples": self.counts.get("SAMPLE", 0), "up": round(now() - self.t_connect) if self.online and self.t_connect else 0}
 
     def stop(self):
         self.halt.set()
@@ -116,7 +127,12 @@ class ShureDriver(Driver):
                 self.sock.settimeout(1.0)
                 with LOCK:
                     self.online, self.error = True, ""
-                self.send("< GET MODEL >< GET 0 ALL >< SET 0 METER_RATE 00500 >")
+                self.t_connect = now()
+                self.counts, self.seen = {}, []
+                # Cada orden por separado y con una pausa: algunos equipos solo atienden bien la primera de un paquete.
+                for cmd in ("< GET MODEL >", "< GET 0 ALL >", "< SET 0 METER_RATE 00500 >"):
+                    self.send(cmd)
+                    time.sleep(0.15)
                 buf, last_poll, self.last_rx = "", now(), now()
                 while not self.halt.is_set():
                     try:
@@ -129,8 +145,10 @@ class ShureDriver(Driver):
                         buf += data.decode("latin-1")
                         self.last_rx = now()
                         buf = self.consume(buf)
-                    if now() - last_poll > 30:  # refresco periódico (y comprobación de vida)
+                    if now() - last_poll > 30:  # refresco periódico (y comprobación de vida); se vuelve a pedir la telemetría
                         self.send("< GET 0 ALL >")
+                        time.sleep(0.15)
+                        self.send("< SET 0 METER_RATE 00500 >")
                         last_poll = now()
                     if now() - self.last_rx > 15:
                         raise ConnectionError("el receptor no responde")
@@ -165,6 +183,8 @@ class ShureDriver(Driver):
         if not t:
             return
         with LOCK:
+            kind = "SAMPLE" if t[0] == "SAMPLE" else f"{t[0]} {t[2]}" if len(t) > 2 and t[1].isdigit() else " ".join(t[:2])
+            self.note(kind, msg)
             if t[0] == "REP":
                 m = re.match(r"REP\s+(\d+)\s+(\w+)\s*(.*)$", msg, re.S)
                 if m:
@@ -177,8 +197,9 @@ class ShureDriver(Driver):
             elif t[0] == "SAMPLE" and len(t) >= 3 and t[1].isdigit() and t[1] != "0":
                 c = self.chan(t[1])
                 c["t"] = now()
-                if t[2] == "ALL" and len(t) == 6 and t[3] in self.ANT and t[4].isdigit() and t[5].isdigit():
-                    c["ant"], c["rf"], c["af"] = self.ANT[t[3]], int(t[4]) - 128, int(t[5]) - 50
+                if t[2] == "ALL" and len(t) == 6 and len(t[3]) == 2 and t[3].isalpha() and t[4].isdigit() and t[5].isdigit():
+                    c["ant"], c["rf"], c["af"] = self.ANT.get(t[3], t[3]), int(t[4]) - 128, int(t[5]) - 50
+                    c.pop("raw", None)
                 else:
                     c["raw"] = msg  # formato de otro modelo: se muestra tal cual
 
@@ -1225,8 +1246,13 @@ def tail(path, n):
 def diagnostics():
     """Texto para pegar en un mensaje cuando algo no funciona: versiones, estado y últimas líneas de los registros."""
     with LOCK:
-        devs = [f"  {d.cfg.get('kind')} {d.host}:{d.port} en línea={d.online} error={d.error or '-'} modelo={d.model or '-'}"
-                for d in DEVICES.values()]
+        devs = []
+        for d in DEVICES.values():
+            devs.append(f"  {d.cfg.get('kind')} {d.host}:{d.port} en línea={d.online} error={d.error or '-'} modelo={d.model or '-'}")
+            devs.append("    mensajes recibidos: " + (", ".join(f"{k}×{v}" for k, v in sorted(d.counts.items())) or "ninguno"))
+            devs.extend("    · " + x for x in d.seen[-25:])
+            for n, c in sorted(d.ch.items()):
+                devs.append(f"    canal {n}: " + ", ".join(f"{k}={v}" for k, v in c.items() if k != "t"))
         an = dict(AN_STATE)
     scratch = os.environ.get("AD600_ENGINE_SCRATCH") or os.path.join(config_dir(), "ad600")
     parts = [

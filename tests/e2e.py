@@ -532,7 +532,54 @@ def t_captura(B):
         ctx.close()
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_shure_sin_medidores(B):
+    print("Receptor Shure que no envía medidores: órdenes por separado y diagnóstico")
+    import socket as _s, threading as _t
+    got, stop = [], _t.Event()
+    srv = _s.socket(); srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1); srv.bind(("127.0.0.1", 0)); srv.listen(2)
+    port = srv.getsockname()[1]
+    def serve():
+        srv.settimeout(0.5)
+        while not stop.is_set():
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                continue
+            c.settimeout(0.3)
+            while not stop.is_set():
+                try:
+                    d = c.recv(4096)
+                except _s.timeout:
+                    continue
+                except OSError:
+                    break
+                if not d:
+                    break
+                got.append(d.decode())
+                for cmd in d.decode().split(">"):
+                    if "GET MODEL" in cmd:
+                        c.sendall(b"< REP MODEL {QLXD4                           } >")
+                    if "GET 0 ALL" in cmd:
+                        c.sendall(b"< REP 1 FREQUENCY 530000 >< REP 1 CHAN_NAME {Voz} >< REP 1 BATT_BARS 4 >")
+    th = _t.Thread(target=serve, daemon=True); th.start()
+    with bridge(None) as br:
+        ctx, pg = B.page(br["url"])
+        pg.evaluate("async(p)=>{await bridgePost('/devices',[{id:'x1',kind:'shure',host:'127.0.0.1',port:p,name:'QLX prueba'}])}", port)
+        for _ in range(60):
+            if pg.evaluate("async()=>{const d=(await diskApi('/status')).devices[0];return !!(d&&d.online&&d.channels['1']&&d.channels['1'].bars===4)}"):
+                break
+            pg.wait_for_timeout(250)
+        check("las tres órdenes iniciales llegan como mensajes separados", len(got) >= 3 and got[0].strip() == "< GET MODEL >" and any("METER_RATE" in g and "GET" not in g for g in got), got[:4])
+        st = pg.evaluate("async()=>(await diskApi('/status')).devices[0]")
+        check("sin medidores: 0 muestras y los datos de los canales sí llegan (frecuencia, nombre, batería)", st["samples"] == 0 and st["channels"]["1"]["name"] == "Voz" and st["channels"]["1"]["bars"] == 4, st)
+        t = pg.evaluate("async()=>(await diskApi('/diagnostics')).text")
+        check("el diagnóstico cuenta los mensajes por tipo y enseña ejemplos", "REP FREQUENCY×1" in t and "REP MODEL" in t and "· REP FREQUENCY: REP 1 FREQUENCY 530000" in t, t[:900])
+        check("el diagnóstico incluye el estado de cada canal", "canal 1:" in t and "name=Voz" in t, t[:800])
+        ctx.close()
+    stop.set()
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "shure0": t_shure_sin_medidores, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)
