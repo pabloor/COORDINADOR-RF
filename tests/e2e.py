@@ -622,8 +622,8 @@ def t_shure_axient(B):
         m = pg.evaluate("""()=>{const rx=document.querySelector('.tile .rx');const L=[...rx.querySelectorAll('.leds')];
             const col=l=>{const i=l.querySelector('i.on');return i?getComputedStyle(i).backgroundColor:null};
             return {n:L.map(l=>l.children.length),on:L.map(l=>l.querySelectorAll('i.on').length),cols:L.map(col),bar:!!rx.querySelector('.meter'),txt:rx.innerText}}""")
-        check("el monitor muestra RF en 10 puntos, calidad en 5 y audio en 7 LED (sin barra continua)", m["n"] == [10, 5, 7] and not m["bar"], m)
-        check("los puntos reflejan los valores: RF -76 → 3, calidad 3/5, audio por el pico (-37) → 2 LED", m["on"] == [3, 3, 2], m)
+        check("el monitor muestra una gráfica de 8 puntos por antena (A y B juntas), calidad en 5 y audio en 7 LED (sin barra continua)", m["n"] == [8, 8, 5, 7] and not m["bar"], m)
+        check("los puntos reflejan los valores: antena A (-76) → 2, B (-90) → 1, calidad 3/5, audio por el pico (-37) → 2 LED", m["on"] == [2, 1, 3, 2], m)
         check("colores: RF naranja, calidad morado, audio verde (los tres distintos)", len(set(m["cols"])) == 3 and None not in m["cols"], m["cols"])
         pg.evaluate("()=>{state.groups[0].freqs[1].f=540000;state.groups[0].freqs[1].locked=true;save();analyzeNow();renderTiles(true)}")
         pg.wait_for_function("()=>document.querySelectorAll('.tile .exp').length>=2")
@@ -636,7 +636,9 @@ def t_shure_axient(B):
         check("al pulsarlo manualmente se guarda «Tx encendido» (y luego apagado, y vuelta al automático)", e2[1] == "on" and e2[2] == "on", e2)
         pg.click(".tile .exp >> nth=0"); pg.click(".tile .exp >> nth=0")
         check("tras el ciclo vuelve al automático y se detecta otra vez", pg.evaluate("()=>document.querySelector('.tile .exp').dataset.v") == "auto-on")
-        check("el texto ya no mezcla audio y pico entre paréntesis", "dBFS" not in m["txt"] and "Antena A -76 dBm" in m["txt"], m["txt"])
+        an = pg.evaluate("()=>{const a=[...document.querySelectorAll('.tile')[0].querySelectorAll('.ant')];return {n:a.length,act:a.map(x=>!!x.querySelector('.act.on')),letras:a.map(x=>x.querySelector('b').textContent)}}")
+        check("las dos antenas van juntas y un punto marca la que recibe (A, la de más señal)", an["n"] == 2 and an["letras"] == ["A", "B"] and an["act"] == [True, False], an)
+        check("el texto ya no mezcla audio y pico entre paréntesis", "dBFS" not in m["txt"] and "Antena A" not in m["txt"] and "-90" not in m["txt"], m["txt"])
         bt = pg.evaluate("""()=>{const t=[...document.querySelectorAll('.tile')];const q=i=>t[i]&&t[i].querySelector('.batt');
             return {graf:document.querySelectorAll('.tile .meter, .tile canvas').length,
                     celdas:[0,1].map(i=>q(i)?q(i).querySelectorAll('.cell').length:null),

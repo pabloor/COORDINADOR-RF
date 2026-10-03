@@ -191,6 +191,12 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .leds.rf i.on{background:var(--im5)}
 .leds.q i.on{background:var(--im33)}
 .rx small.sub{color:var(--muted);font-size:11.5px}
+.rr.ants{justify-content:flex-start;flex-wrap:nowrap;gap:10px}
+.rr.ants .leds{gap:2px}.rr.ants .leds i{width:6px;height:6px}
+.ant{display:inline-flex;align-items:center;gap:4px}
+.ant b{font-size:12px;color:var(--muted);width:9px}
+.ant .act{width:7px;height:7px;border-radius:50%;background:transparent;display:inline-block}
+.ant .act.on{background:var(--accent)}
 .batt{display:inline-flex;align-items:center;gap:6px}
 .batt svg .shell{fill:none;stroke:var(--muted);stroke-width:1}
 .batt svg .nub{fill:var(--muted)}
@@ -1948,14 +1954,20 @@ function rxBlock(ch){
   const ant=c.ant?` (antena ${c.ant==="-"?"ninguna":c.ant})`:"";
   const q=c.qual!=null?c.qual:c.rfq!=null?Math.round(c.rfq/20):null;
   const dots=(n,tot,cls)=>`<span class="leds ${cls||""}" aria-hidden="true">${Array.from({length:tot},(_,i)=>`<i class="${i<n?"on":""}"></i>`).join("")}</span>`;
+  /* Dos antenas (Axient): una gráfica de puntos por antena, una junto a otra, y un punto azul en la que está recibiendo
+     (la que más señal tiene; ninguna si las dos están en el ruido). Sin valores en pantalla. */
+  const two=c.rfA!=null&&c.rfB!=null,lvl=v=>Math.max(0,Math.min(8,Math.round((v+100)/80*8)));
+  const actA=!two||Math.max(c.rfA,c.rfB)<=-100?null:(c.rfA>=c.rfB?"A":"B");
+  const antBar=(L,v)=>`<span class="ant" title="${actA===L?`Antena ${L}: es la que está recibiendo`:`Antena ${L}`}"><b>${L}</b><i class="act${actA===L?" on":""}"></i>${dots(lvl(v),8,"sm rf")}</span>`;
   /* Audio en 7 puntos, todos verdes, según el pico (si el equipo no lo da, el nivel): -50, -40, -30, -20, -12, -6 y -3 dBFS */
   const AUD=[-50,-40,-30,-20,-12,-6,-3],audV=c.afPeak!=null?c.afPeak:c.af;
   const lit=audV==null?0:AUD.filter(t=>audV>=t).length;
   const leds=`<span class="leds" aria-hidden="true">${AUD.map((_,i)=>`<i class="${i<lit?"on":""}"></i>`).join("")}</span>`;
   const audTitle=c.af==null?"Sin dato de audio":`Audio ${c.af} dBFS`+(c.afPeak!=null?`, pico ${c.afPeak} dBFS`:"");
   return `<div class="rr"><b>${esc(r.label)}</b><span class="s-idle">${esc(r.where)}</span></div>
-    <div class="rr"><span>RF ${c.rf==null?"—":c.rf+" dBm"}${ant}</span>${dots(rfDots,10,"sm rf")}</div>
-    ${c.rfA!=null?`<div class="rr"><small class="sub">Antena A ${c.rfA} dBm · B ${c.rfB} dBm</small></div>`:""}
+    ${two?`<div class="rr"><span>RF ${c.rf==null?"—":c.rf+" dBm"}${ant}</span></div>
+    <div class="rr ants">${antBar("A",c.rfA)}${antBar("B",c.rfB)}</div>`
+    :`<div class="rr"><span>RF ${c.rf==null?"—":c.rf+" dBm"}${ant}</span>${dots(rfDots,10,"sm rf")}</div>`}
     ${q!=null?`<div class="rr"><span>Calidad</span>${dots(Math.max(0,Math.min(5,q)),5,"q")}</div>`:""}
     <div class="rr" title="${esc(audTitle)}"><span>Audio</span>${leds}</div>
     <div class="rr"><span>${c.tx?esc(c.tx):"Sin emisor"}</span>${battIcon(c)}</div>
