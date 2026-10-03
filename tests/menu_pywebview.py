@@ -17,4 +17,6 @@ assert any(isinstance(i, MenuSeparator) for i in menu[0].items)
 assert "menu" in inspect.signature(webview.start).parameters, "esta versión de pywebview no admite menús"
 assert "js_api" in inspect.signature(webview.create_window).parameters
 assert hasattr(webview, "FileDialog") or hasattr(webview, "OPEN_DIALOG")
+mon = pr.monitor_menu()
+assert len(mon) == 1 and mon[0].title == "Monitor" and len([i for i in mon[0].items if isinstance(i, MenuAction)]) == 5, mon
 print("menú Proyecto: correcto con pywebview", getattr(webview, "__version__", "?"))

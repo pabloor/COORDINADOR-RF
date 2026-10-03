@@ -127,7 +127,8 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 .mbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:5px;font-size:14px;z-index:9}
 .projsel{max-width:220px;font-weight:600}
-html[data-nativo] #projSel,html[data-nativo] details.projbox{display:none}
+html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .monctl{display:none}
+.monctl{display:contents}
 .pklist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin:10px 0}
 .pklist button{text-align:left}.pklist button[aria-current=true]{border-color:var(--accent);font-weight:600}
 .updbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:7px 18px;background:color-mix(in srgb,var(--accent) 14%,var(--panel));border-bottom:1px solid var(--line);font-size:14px}
@@ -397,12 +398,12 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox{display:none}
     <label class="f" id="lvCapW">Capturar durante<select id="lvCapDur"><option value="0">Solo el barrido actual</option><option value="10">10 s (máximo)</option><option value="30">30 s (máximo)</option><option value="60">1 min (máximo)</option><option value="120">2 min (máximo)</option></select></label>
     <button class="btn small primary" id="lvSave" title="Guarda lo que ve el analizador como escaneo del sitio: la coordinación evitará esas frecuencias">Capturar como escaneo</button>
     <button class="btn small" id="lvDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
-    <button class="btn small" id="monAllOn" title="Marca todos los canales del monitor como «Tx encendido»">Todos encendidos</button>
-    <button class="btn small" id="monAllAuto" title="Quita lo marcado: el monitor detecta solo si hay un emisor sincronizado">Sin indicar</button>
-    <label class="chk" title="Suena cuando un canal pierde la portadora, aparece una señal no esperada o un receptor da una alarma"><input type="checkbox" id="alSound">Aviso sonoro</label>
-    <label class="chk" title="Notificación del sistema ante las mismas alarmas"><input type="checkbox" id="alNotify">Notificación</label>
-    <button class="btn small" id="alTest">Probar avisos</button>
-    <button class="btn small" id="logExport" title="Guarda el registro de eventos como archivo CSV">Exportar registro</button>
+    <span class="monctl">
+      <label class="chk" title="Suena cuando un canal pierde la portadora, aparece una señal no esperada o un receptor da una alarma"><input type="checkbox" id="alSound">Aviso sonoro</label>
+      <label class="chk" title="Notificación del sistema ante las mismas alarmas"><input type="checkbox" id="alNotify">Notificación</label>
+      <button class="btn small" id="alTest">Probar avisos</button>
+      <button class="btn small" id="logExport" title="Guarda el registro de eventos como archivo CSV">Exportar registro</button>
+    </span>
   </div>
   <div class="lstatus" id="lvStatus" aria-live="polite"></div>
   <div class="live-wrap">
@@ -1742,7 +1743,8 @@ function monitorTick(now){
   if(tab==="mon"){renderTiles(false);renderSide();}
 }
 function renderMonConn(){
-  $("#monConn").textContent=live.src?`Analizador conectado. ${live.info}`:"Sin analizador conectado: conéctalo en Espectro en vivo (o usa el simulador) para ver los niveles. Allí están también el umbral, los avisos y el registro.";
+  const a=state.monitor.alerts,av=` Avisos: sonido ${a.sound?"activado":"desactivado"}, notificación ${a.notify?"activada":"desactivada"}.`;
+  $("#monConn").textContent=(live.src?`Analizador conectado. ${live.info}`:"Sin analizador conectado: conéctalo en Espectro en vivo (o usa el simulador) para ver los niveles.")+av;
 }
 let monSig="";
 function renderTiles(force){
@@ -1786,8 +1788,6 @@ $("#tiles").addEventListener("click",e=>{
   b.dataset.v=nx;b.textContent=EXP_TXT[nx];save();
   mon.st.set(k,chStatus(k,mon.lv.get(k)??null));renderTiles(false);
 });
-$("#monAllOn").addEventListener("click",()=>{for(const c of monChannels())state.monitor.expect[c.key]="on";save();renderTiles(true);});
-$("#monAllAuto").addEventListener("click",()=>{state.monitor.expect={};save();renderTiles(true);});
 $("#logClear").addEventListener("click",()=>{mon.log=[];renderSide();});
 
 /* ======================================================================
@@ -2258,6 +2258,9 @@ $("#reportBtn").onclick=makeReport;
    Sonido (WebAudio) y notificación del sistema (a través del puente en Mac; si no, la del navegador).
    No se repite el mismo aviso en 20 s ni el sonido en menos de 2,5 s. */
 const alertSt={last:new Map(),lastSound:0};let actx=null;
+function unlockAudio(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume();
+  const b=actx.createBuffer(1,1,22050),n=actx.createBufferSource();n.buffer=b;n.connect(actx.destination);n.start(0);}catch(e){}}
+["pointerdown","keydown"].forEach(ev=>document.addEventListener(ev,unlockAudio,{once:true,capture:true}));
 function beep(){
   try{
     actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume();
@@ -2285,8 +2288,8 @@ function raiseAlert(txt,force){
   if(a.notify){if(force)sendNotification("Coordinador RF",txt);else queueNotification(txt);}
 }
 function syncAlertControls(){const a=state.monitor.alerts;$("#alSound").checked=!!a.sound;$("#alNotify").checked=!!a.notify;}
-$("#alSound").addEventListener("change",e=>{state.monitor.alerts.sound=e.target.checked;save();if(e.target.checked)beep();});
-$("#alNotify").addEventListener("change",e=>{state.monitor.alerts.notify=e.target.checked;save();if(e.target.checked)sendNotification("Coordinador RF","Las notificaciones están activadas.");});
+$("#alSound").addEventListener("change",e=>{state.monitor.alerts.sound=e.target.checked;save();renderMonConn();if(e.target.checked)beep();});
+$("#alNotify").addEventListener("change",e=>{state.monitor.alerts.notify=e.target.checked;save();renderMonConn();if(e.target.checked)sendNotification("Coordinador RF","Las notificaciones están activadas.");});
 $("#alTest").addEventListener("click",()=>{
   const a=state.monitor.alerts;if(!a.sound&&!a.notify){toast("Activa el aviso sonoro o la notificación para probarlos.");return;}
   raiseAlert("Prueba de aviso: así se verá una alarma.",true);
@@ -2508,6 +2511,15 @@ $("#pickModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#pickModal
 const MENU_ACC={cambiar:()=>projPick(),nuevo:()=>projNew(),duplicar:()=>projDup(),renombrar:()=>projRen(),borrar:()=>projDel(),
   vaciar:()=>$("#reset").click(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
 function menuProyecto(a){const f=MENU_ACC[a];if(f){f();return true;}return false;}
+function menuMonitor(a){
+  const sw=(id,txt)=>{const c=$(id);c.checked=!c.checked;c.dispatchEvent(new Event("change"));toast(`${txt} ${c.checked?"activado":"desactivado"}.`);return true;};
+  if(a==="sonido")return sw("#alSound","Aviso sonoro");
+  if(a==="notif")return sw("#alNotify","Notificación del sistema");
+  if(a==="probar"){$("#alTest").click();return true;}
+  if(a==="registro"){$("#logExport").click();return true;}
+  if(a==="borrar"){$("#logClear").click();return true;}
+  return false;
+}
 function menuTexto(kind){return kind==="csv"?csvText():kind==="proyecto"?JSON.stringify(exportState()):"";}
 function menuCargar(name,text){
   try{const s=JSON.parse(text);if(!s||!Array.isArray(s.groups))throw 0;importProject(s,String(name||"").replace(/\.[^.]+$/,"")||"Proyecto importado");toast("Proyecto cargado como proyecto nuevo.");return true;}

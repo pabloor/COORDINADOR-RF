@@ -1950,6 +1950,29 @@ def project_menu(webview_module=None, menu_module=None):
     ])]
 
 
+def monitor_menu(webview_module=None, menu_module=None):
+    """Menú «Monitor» de la barra de menús de macOS: avisos y registro del monitor (llaman a menuMonitor de la página).
+    El menú nativo no tiene casillas, así que cada opción de aviso se alterna y la página dice cómo ha quedado."""
+    wv = webview_module
+    if wv is None:
+        import webview as wv
+    if menu_module is None:
+        from webview import menu as menu_module
+    Menu, Action, Sep = menu_module.Menu, menu_module.MenuAction, menu_module.MenuSeparator
+
+    def acc(nombre):
+        return lambda: wv.windows[0].evaluate_js(f"menuMonitor({json.dumps(nombre)})") if wv.windows else None
+
+    return [Menu("Monitor", [
+        Action("Activar o desactivar el aviso sonoro", acc("sonido")),
+        Action("Activar o desactivar la notificación del sistema", acc("notif")),
+        Action("Probar avisos", acc("probar")),
+        Sep(),
+        Action("Exportar registro de eventos…", acc("registro")),
+        Action("Borrar registro de eventos", acc("borrar")),
+    ])]
+
+
 def run_window(url):
     """Abre la app en una ventana propia con pywebview (en Mac, el motor de Safari).
     Bloquea hasta que se cierra la ventana. Devuelve False si no se puede abrir."""
@@ -1972,7 +1995,7 @@ def run_window(url):
         menu_ok = "menu" in inspect.signature(webview.start).parameters  # pywebview 4.1 o posterior
         if sys.platform == "darwin" and menu_ok:  # en Mac todo lo de «Proyecto» va en la barra de menús (la página oculta lo suyo con ?ventana=1)
             try:
-                kw["menu"] = project_menu()
+                kw["menu"] = project_menu() + monitor_menu()
                 api = WindowApi()
                 url = url + "/?ventana=1"
             except Exception as e:

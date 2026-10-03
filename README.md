@@ -40,8 +40,9 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   el título de la ventana; en el navegador siguen el selector de la cabecera y la sección Proyecto del panel. Se guardan en la app y, con el puente conectado, como archivos en
   `Documentos/Coordinador RF/Proyectos`, de donde se recuperan si se pierden los datos de la app. Informes y registros van a
   `Documentos/Coordinador RF/Informes` y `Registros`.
-- **Monitor de canales:** el botón del emisor pasa solo a «Tx encendido» cuando el receptor tiene un emisor sincronizado. Los controles de
-  avisos, umbral, «Todos encendidos» y el registro están en *Espectro en vivo*, y el botón *Receptores* en *Coordinación*. Estado de cada canal con los niveles del analizador y los datos de los receptores en red, con aviso
+- **Monitor de canales:** el botón del emisor pasa solo a «Tx encendido» cuando el receptor tiene un emisor sincronizado. Los avisos
+  (sonido y notificación del sistema), probar avisos y el registro están en el menú **Monitor** de la barra de menús del Mac (en el navegador, en
+  *Espectro en vivo*); el umbral sigue en *Espectro en vivo* y el botón *Receptores* en *Coordinación*. Estado de cada canal con los niveles del analizador y los datos de los receptores en red, con aviso
   sonoro y notificación del sistema ante alarmas, y registro exportable a CSV.
 - **Receptores de red (Shure TCP 2202, Sennheiser SSC UDP 45):** el selector *Red por la que buscar* limita la búsqueda a una
   conexión del ordenador (cable, Wi-Fi…) en vez de revisarlas todas. *Importar a la coordinación* crea un grupo con sus frecuencias;

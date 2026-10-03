@@ -489,9 +489,9 @@ def t_grafica_red(B):
         check("fuera de la franja de productos no hay información de IMD", "intermodulación" not in pg.inner_text("#tip") and pg.evaluate("()=>hoverSrc.size")==0)
         # dónde está cada control: avisos y registro en Espectro en vivo, receptores en Coordinación, nada de eso en el Monitor
         where = pg.evaluate("""()=>{const v=id=>{const e=document.getElementById(id);const s=e&&e.closest('#viewCoord, section.view');return s?s.id:null};
-            return {alSound:v('alSound'),alNotify:v('alNotify'),alTest:v('alTest'),logExport:v('logExport'),monAllOn:v('monAllOn'),monAllAuto:v('monAllAuto'),
+            return {alSound:v('alSound'),alNotify:v('alNotify'),alTest:v('alTest'),logExport:v('logExport'),hay:['monAllOn','monAllAuto'].filter(i=>document.getElementById(i)).length,
                     netToggle:v('netToggle'),netPanel:v('netPanel'),monBtns:document.querySelectorAll('#viewMon .bar button, #viewMon .bar input').length}}""")
-        check("avisos, registro y «Todos encendidos» están en Espectro en vivo", all(where[k] == "viewLive" for k in ("alSound", "alNotify", "alTest", "logExport", "monAllOn", "monAllAuto")), where)
+        check("avisos y registro siguen en Espectro en vivo (para el navegador) y «Todos encendidos» / «Sin indicar» ya no existen", all(where[k] == "viewLive" for k in ("alSound", "alNotify", "alTest", "logExport")) and where["hay"] == 0, where)
         check("el botón y el panel de Receptores están en Coordinación", where["netToggle"] == "viewCoord" and where["netPanel"] == "viewCoord", where)
         check("la barra del Monitor ya no tiene botones ni campos", where["monBtns"] == 0, where)
         # selector de red
@@ -653,6 +653,19 @@ def t_menu_proyecto(B):
         # Ventana de la app (?ventana=1): se ocultan y se maneja todo desde el menú
         ctx, pg = B.page(br["url"] + "/?ventana=1")
         check("en la ventana de la app se ocultan (están en el menú nativo)", not vis("#projSel") and not vis("details.projbox"))
+        check("en la ventana de la app también se ocultan los avisos del monitor (están en el menú Monitor)", not vis(".monctl"))
+        pg.evaluate("()=>{menuMonitor('sonido')}")
+        check("menú Monitor → aviso sonoro alterna y lo dice", pg.evaluate("()=>state.monitor.alerts.sound") is True and "Aviso sonoro activado" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        pg.evaluate("()=>{menuMonitor('notif')}")
+        check("menú Monitor → notificación alterna", pg.evaluate("()=>state.monitor.alerts.notify") is True)
+        pg.click('[data-tab="mon"]')
+        check("el monitor muestra cómo han quedado los avisos", "sonido activado, notificación activada" in pg.inner_text("#monConn"), pg.inner_text("#monConn"))
+        pg.evaluate("()=>{menuMonitor('sonido');menuMonitor('notif')}")
+        check("y vuelve a apagarlos", pg.evaluate("()=>!state.monitor.alerts.sound&&!state.monitor.alerts.notify") and "sonido desactivado" in pg.inner_text("#monConn"))
+        pg.evaluate("()=>{menuMonitor('probar')}")
+        check("menú Monitor → Probar avisos sin ningún aviso activado lo explica", "Activa el aviso sonoro" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        check("una opción desconocida del menú Monitor no hace nada", pg.evaluate("()=>menuMonitor('x')") is False)
+        pg.click('[data-tab="coord"]')
         pg.evaluate("()=>{menuProyecto('nuevo')}")
         pg.wait_for_selector("#nameModal:not([hidden])")
         pg.fill("#nmText", "Boda García"); pg.press("#nmText", "Enter"); pg.wait_for_timeout(400)
@@ -704,6 +717,11 @@ def t_menu_proyecto(B):
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
     check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 11 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    mon = pr.monitor_menu(wv, mm)
+    macts = {i.title: i.function for i in mon[0].items if isinstance(i, Action)}
+    check("el menú «Monitor» tiene avisos y registro", mon[0].title == "Monitor" and len(macts) == 5 and "Probar avisos" in macts, list(macts))
+    macts["Probar avisos"]()
+    check("sus opciones llaman a menuMonitor", calls[-1] == 'menuMonitor("probar")', calls[-1])
     acts["Nuevo proyecto…"]()
     check("cada opción llama a su función de la página", calls[-1] == 'menuProyecto("nuevo")', calls)
     acts["Copiar lista de frecuencias (CSV)"]()
