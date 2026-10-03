@@ -12,7 +12,14 @@ mkdir -p "$APPDIR" "$SERVE"
 SRV=""
 cleanup() { pkill -f "$APPDIR/" 2>/dev/null; [ -n "$SRV" ] && kill "$SRV" 2>/dev/null; }
 fail() {
-  echo "FALLO: $*"; echo "--- registro de la app ---"; tail -30 "$W/app.log" 2>/dev/null
+  echo "FALLO: $*"
+  echo "--- servidor local de la prueba ---"; curl -sS -m 5 "http://127.0.0.1:$PORT_SRV/good.json" 2>&1 | head -c 400; echo
+  echo "--- python del sistema hacia ese servidor ---"
+  python3 -c "import urllib.request as u;print(u.getproxies());print(u.urlopen('http://127.0.0.1:$PORT_SRV/good.json',timeout=5).read()[:60])" 2>&1 | tail -3
+  echo "--- proxies del sistema ---"; env | grep -i proxy; scutil --proxy 2>&1 | head -12
+  echo "--- diagnóstico del puente ---"; [ -n "${K:-}" ] && curl -s -m 10 "http://127.0.0.1:$PORT_APP/diagnostics?k=$K" | head -c 3000
+  echo "--- salida de la app ---"; tail -30 "$W/app.log" 2>/dev/null
+  echo "--- CoordinadorRF.log ---"; tail -40 "$CFG/CoordinadorRF.log" 2>/dev/null
   echo "--- actualizacion.log ---"; cat "$CFG/actualizacion.log" 2>/dev/null; cleanup; exit 1
 }
 ok() { echo "  ok    $*"; }

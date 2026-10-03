@@ -1243,6 +1243,9 @@ UA = {"User-Agent": "CoordinadorRF", "Accept": "application/vnd.github+json"}
 def _urlopen(req, timeout):
     """Abre una dirección probando primero los certificados del sistema y después los de certifi (en la app
     empaquetada puede faltar alguno)."""
+    url = req.full_url if hasattr(req, "full_url") else str(req)
+    if url.startswith(("http://127.0.0.1:", "http://localhost:")):  # lo local nunca pasa por un proxy del sistema
+        return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout)
     ctxs = [ssl.create_default_context()]
     try:
         import certifi
