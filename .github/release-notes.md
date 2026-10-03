@@ -6,6 +6,12 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.13**
+- **Menú «Proyecto» en la barra de menús del Mac:** cambiar, nuevo, duplicar, renombrar, borrar, vaciar, abrir carpeta, cargar archivo, pegar, copiar lista (CSV) y copiar proyecto.
+  Desaparecen el selector de la cabecera y la sección Proyecto del panel; el nombre del proyecto va en el título de la ventana.
+- **«Tx encendido» automático** en el monitor cuando el receptor tiene un emisor sincronizado.
+- Los controles de avisos, umbral, «Todos encendidos» y registro pasan a **Espectro en vivo**; el botón **Receptores**, a **Coordinación**.
+
 **Novedades de la 1.12**
 - **Monitor:** el audio se muestra solo por el pico, en 7 LED verdes; la calidad en 5 puntos morados y el nivel de RF en 10 puntos naranjas.
 
