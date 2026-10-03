@@ -390,7 +390,8 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <label class="chk"><input type="checkbox" id="lvMax">Máximo</label>
     <label class="chk"><input type="checkbox" id="lvAvg">Promedio</label>
     <button class="btn small" id="lvReset">Borrar máximo</button>
-    <button class="btn small" id="lvSave">Guardar como escaneo</button>
+    <label class="f" id="lvCapW">Capturar durante<select id="lvCapDur"><option value="0">Solo el barrido actual</option><option value="10">10 s (máximo)</option><option value="30">30 s (máximo)</option><option value="60">1 min (máximo)</option><option value="120">2 min (máximo)</option></select></label>
+    <button class="btn small primary" id="lvSave" title="Guarda lo que ve el analizador como escaneo del sitio: la coordinación evitará esas frecuencias">Capturar como escaneo</button>
     <button class="btn small" id="lvDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
   </div>
   <div class="lstatus" id="lvStatus" aria-live="polite"></div>
@@ -792,7 +793,7 @@ async function coordinate(){
 }
 
 /* ---------- Análisis de compatibilidad ---------- */
-let analysis={C:[],prods:{},bad:0};
+let analysis={C:[],prods:{},bad:0,K:{},V:{},unpack:null};
 const SH=1073741824;// 2^30
 /* Formas de producto: clave de separación, texto. s = [a,b,c] índices de las portadoras de origen. */
 const FORMS={
@@ -841,7 +842,7 @@ function analyzeNow(){
     if(iss.length)bad++;
   }
   const prods={im3:V.im3,im5:V.im5,im7:V.im7,im9:V.im9,im33:V.im33,im35:merge(V.im35a,V.im35b)};
-  analysis={C,prods,bad};
+  analysis={C,prods,bad,K,V,unpack};
   renderStatus();draw();
 }
 let aTimer=null;
@@ -1090,7 +1091,7 @@ $("#pmYes").onclick=()=>{
 $("#btnCoord").onclick=coordinate;
 
 let toastT=null;
-function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3200);}
+function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,Math.min(12000,3200+msg.length*35));}
 
 /* ---------- Espectro ---------- */
 const cv=$("#spec"),ctx2=cv.getContext("2d"),tip=$("#tip");
@@ -1151,9 +1152,10 @@ function draw(){
   if(P.im3)bins(P.im3,ph*.28,C.im3,.9);
   // Portadoras
   const top=PADT+ph*.2;const showLbl=span<=40000;
-  for(const c of analysis.C){
-    const x=X(c.f);if(x<PADL-4||x>PADL+pw+4)continue;
+  for(let ci=0;ci<analysis.C.length;ci++){
+    const c=analysis.C[ci],x=X(c.f);if(x<PADL-4||x>PADL+pw+4)continue;
     const k=c.g.id+":"+c.i,isSel=k===selected;
+    if(hoverSrc.has(ci)){g.strokeStyle=C.ink;g.lineWidth=7;g.globalAlpha=.25;g.beginPath();g.moveTo(x,bot);g.lineTo(x,top);g.stroke();g.globalAlpha=1;}
     g.strokeStyle=c.g.color;g.lineWidth=isSel?3.5:2;g.beginPath();g.moveTo(x,bot);g.lineTo(x,top);g.stroke();
     g.fillStyle=c.g.color;g.beginPath();g.arc(x,top,isSel?5:3.5,0,Math.PI*2);g.fill();
     if(c.issues.length){g.strokeStyle=C.im3;g.lineWidth=2;g.beginPath();g.arc(x,top,8,0,Math.PI*2);g.stroke();}
@@ -1171,7 +1173,20 @@ function draw(){
   g.save();g.translate(11,PADT+ph/2);g.rotate(-Math.PI/2);g.textAlign="center";g.fillText(S.f.length?"dBm":"",0,0);g.restore();
   updFreqBar();
 }
-let cursorF=null,carDrag=null;
+let cursorF=null,carDrag=null,hoverSrc=new Set();
+/* Productos de intermodulación bajo el cursor (solo en la franja inferior, donde se dibujan): qué portadoras los producen. */
+function imdAt(e){
+  const r=cv.getBoundingClientRect(),ph=r.height-PADT-PADB,bot=PADT+ph,py=e.clientY-r.top;
+  if(!analysis.unpack||py<bot-ph*.3||py>bot+2)return [];
+  const pw=r.width-PADL-PADR,f=fAt(e),tol=Math.max(1,4*(view.b-view.a)/pw),out=[];
+  for(const k in FORMS){
+    const V=analysis.V[k],K=analysis.K[k];if(!V)continue;
+    for(let i=lowerBound(V,f-tol);i<V.length&&V[i]<=f+tol&&out.length<40;i++)out.push({k,v:V[i],s:analysis.unpack(K[i])});
+  }
+  out.sort((a,b)=>Math.abs(a.v-f)-Math.abs(b.v-f));
+  return out.slice(0,6);
+}
+function imdText(h){const F=x=>{const c=analysis.C[x];return c?`${esc(chFull(c.g,c.i))} (${fmt(c.f)})`:"?";};return `${FORMS[h.k].txt(F,h.s)} = <b>${fmt(h.v)}</b>`;}
 function updFreqBar(){
   const bar=$("#freqBar");if(!bar)return;
   let h=`<span>Vista <b>${fmt(view.a)} – ${fmt(view.b)}</b> MHz</span>`;
@@ -1212,6 +1227,10 @@ cv.addEventListener("pointermove",e=>{
   const r=cv.getBoundingClientRect(),f=fAt(e),c=nearest(e);
   let txt=`<b>${fmt(Math.round(f))} MHz</b>`;
   if(c)txt+=`<br>${esc(chFull(c.g,c.i))}: ${fmt(c.f)}${c.issues.length?`<br><span style="color:var(--im3)">${c.issues.length} problema${c.issues.length>1?"s":""}</span>`:""}`;
+  const hits=carDrag||drag&&drag.moved?[]:imdAt(e),want=new Set();
+  for(const h of hits)for(const x of h.s)want.add(x);
+  if(hits.length)txt+=`<br><span style="color:var(--muted)">Producto${hits.length>1?"s":""} de intermodulación:</span>`+hits.map(h=>`<br><span style="color:var(--im3)">${imdText(h)}</span>`).join("");
+  if(want.size!==hoverSrc.size||[...want].some(x=>!hoverSrc.has(x))){hoverSrc=want;draw();}
   const tvn=Math.floor((f-470000)/8000)+21;if(tvn>=TV_FIRST&&tvn<=TV_LAST)txt+=`<br><span style="color:var(--muted)">Canal TV ${tvn}${state.tv.includes(tvn)?" (ocupado)":""}</span>`;
   tip.innerHTML=txt;tip.hidden=false;
   let x=e.clientX-r.left+14,y=e.clientY-r.top+14;if(x+tip.offsetWidth>r.width)x=e.clientX-r.left-tip.offsetWidth-10;if(y+tip.offsetHeight>r.height)y=r.height-tip.offsetHeight-4;
@@ -1233,7 +1252,7 @@ cv.addEventListener("pointerup",e=>{
   if(drag&&!drag.moved){const c=nearest(e);if(c)selectKey(c.g.id+":"+c.i,false),scrollToRow();}drag=null;
 });
 cv.addEventListener("pointercancel",()=>{drag=null;endCarDrag(true);});
-cv.addEventListener("pointerleave",()=>{tip.hidden=true;if(!carDrag){cursorF=null;updFreqBar();}});
+cv.addEventListener("pointerleave",()=>{tip.hidden=true;if(hoverSrc.size){hoverSrc=new Set();draw();}if(!carDrag){cursorF=null;updFreqBar();}});
 cv.addEventListener("wheel",e=>{e.preventDefault();zoom(fAt(e),e.deltaY>0?1.25:0.8);},{passive:false});
 cv.addEventListener("dblclick",fit);
 function scrollToRow(){if(!selected)return;const tr=document.querySelector(`tr.ch[data-k="${selected}"]`);if(tr)tr.scrollIntoView({block:"nearest"});}
@@ -1563,13 +1582,43 @@ $("#monThr").addEventListener("change",e=>setThr(parseFloat(e.target.value)));
 $("#lvMax").addEventListener("change",e=>{state.live.maxOn=e.target.checked;save();drawLive();});
 $("#lvAvg").addEventListener("change",e=>{state.live.avgOn=e.target.checked;save();drawLive();});
 $("#lvReset").addEventListener("click",()=>{if(live.l)live.max=Float32Array.from(live.l);drawLive();});
-$("#lvSave").addEventListener("click",()=>{
-  if(!live.f){toast("Todavía no hay datos del analizador.");return;}
-  const src=state.live.maxOn&&live.max?live.max:live.l;
-  state.scan.f=Array.from(live.f,Math.round);state.scan.l=Array.from(src,v=>Math.round(v*10)/10);
-  const d=new Date();state.scan.name=`Captura en vivo ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`+(src===live.max?" (máximo)":"");
+/* Captura de escaneo: se queda con el máximo de cada punto durante unos segundos y lo funde con el escaneo que ya hubiera
+   (solo se sustituye la parte del espectro que cubre la captura). Activa «evitar» y propone un umbral sobre el ruido. */
+let cap=null;
+function medianOf(a){const b=Float32Array.from(a).sort();return b.length?b[b.length>>1]:-100;}
+function applyCapture(F,L,label){
+  const S=state.scan,had=S.f.length>0,f0=F[0],f1=F[F.length-1];
+  const nf=[],nl=[];
+  for(let i=0;i<S.f.length;i++)if(S.f[i]<f0||S.f[i]>f1){nf.push(S.f[i]);nl.push(S.l[i]);}
+  for(let i=0;i<F.length;i++){nf.push(Math.round(F[i]));nl.push(Math.round(L[i]*10)/10);}
+  const idx=nf.map((_,i)=>i).sort((a,b)=>nf[a]-nf[b]);
+  S.f=idx.map(i=>nf[i]);S.l=idx.map(i=>nl[i]);S.name=label;
+  const floor=medianOf(L),sug=Math.max(-110,Math.min(-40,Math.round(floor+10)));
+  if(!had)S.threshold=sug;
+  S.enabled=true;
+  let zones=0,above=false;
+  for(let i=0;i<L.length;i++){const hi=L[i]>S.threshold;if(hi&&!above)zones++;above=hi;}
+  $("#scanTh").value=S.threshold;$("#scanOn").checked=true;
   save();renderScanInfo();analyzeNow();renderTable();
-  toast("Guardado como escaneo. La coordinación ya evitará lo que supere el umbral del escaneo.");
+  toast(`Escaneo guardado (${fmt(f0)}–${fmt(f1)} MHz): ruido hacia ${Math.round(floor)} dBm, umbral ${S.threshold} dBm, `+
+    `${zones?`${zones} zona${zones>1?"s":""} ocupada${zones>1?"s":""}`:"ninguna zona ocupada"}. La coordinación ya evita lo que lo supera.`);
+  return {zones,floor,threshold:S.threshold};
+}
+function capFinish(){
+  const c=cap;if(!c)return;clearInterval(c.t);cap=null;$("#lvSave").textContent="Capturar como escaneo";
+  if(!live.f||!live.max){toast("El analizador no ha enviado datos durante la captura.");return;}
+  const d=new Date(),hm=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  applyCapture(live.f,c.dur?live.max:live.l,`Captura en vivo ${hm}`+(c.dur?` (máximo de ${c.dur} s)`:""));
+}
+$("#lvSave").addEventListener("click",()=>{
+  if(cap){capFinish();return;}
+  if(!live.f||!live.l){toast("Todavía no hay datos del analizador. Conéctalo primero.");return;}
+  const dur=parseInt($("#lvCapDur").value)||0;
+  if(!dur){cap={dur:0};capFinish();return;}
+  live.max=Float32Array.from(live.l);
+  cap={dur,t0:performance.now(),t:0};
+  const tick=()=>{const left=Math.max(0,dur-(performance.now()-cap.t0)/1000);$("#lvSave").textContent=`Capturando… ${Math.ceil(left)} s (pulsa para terminar)`;if(left<=0)capFinish();};
+  cap.t=setInterval(tick,250);tick();
 });
 
 /* ---------- Dibujo del espectro en vivo ---------- */
@@ -1933,6 +1982,19 @@ function rxChan(e){
   return c?{dev:d,ch:e.rx.c,c,where:`${d.name||d.model||d.host}, canal ${e.rx.c}`}:null;
 }
 const rxFreq=c=>c.freq!=null&&c.freq>0?c.freq:null;
+/* Verificación tras enviar: se vuelve a leer lo que dice cada receptor y se compara con lo enviado. */
+const verifyMap=new WeakMap();   // entrada -> {khz, state:"pending"|"ok"|"bad"}
+function verifyState(e){const v=verifyMap.get(e);return v&&v.khz===e.f?v:null;}
+async function verifyEntries(items,waitMs=10000){
+  for(const x of items)verifyMap.set(x.e,{khz:x.khz,state:"pending"});
+  net.coordSig="";renderTable();
+  const t0=performance.now(),done=()=>items.every(x=>{const r=rxChan(x.e);return r&&rxFreq(r.c)===x.khz;});
+  while(performance.now()-t0<waitMs&&!done())await new Promise(r=>setTimeout(r,300));
+  const ok=[],bad=[];
+  for(const x of items){const r=rxChan(x.e),good=!!r&&rxFreq(r.c)===x.khz;verifyMap.get(x.e).state=good?"ok":"bad";(good?ok:bad).push({...x,now:r?rxFreq(r.c):null});}
+  net.coordSig="";renderTable();
+  return {ok,bad};
+}
 function rxCell(e,k){
   const mine=e.rx?e.rx.d+"|"+e.rx.c:"",taken=linkedKeys(e);let found=false;
   const o=[`<option value="">Virtual</option>`];
@@ -1944,6 +2006,9 @@ function rxCell(e,k){
   let st="";
   if(e.rx){const r=rxChan(e);
     if(!r)st=`<small class="rxst s-idle">Sin conexión con el receptor</small>`;
+    else if(e.f!=null&&verifyState(e)&&verifyState(e).state==="pending")st=`<small class="rxst s-idle">Comprobando en el receptor…</small>`;
+    else if(e.f!=null&&verifyState(e)&&verifyState(e).state==="bad"&&rxFreq(r.c)!==e.f)st=`<small class="rxst s-bad">No confirmado: el receptor está en ${rxFreq(r.c)!=null?fmt(rxFreq(r.c))+" MHz":"una frecuencia desconocida"}</small>`;
+    else if(e.f!=null&&verifyState(e)&&verifyState(e).state==="ok"&&rxFreq(r.c)===e.f)st=`<small class="rxst s-ok">Verificado en el receptor</small>`;
     else if(e.f!=null)st=rxFreq(r.c)===e.f?`<small class="rxst s-ok">Sintonizado</small>`:`<small class="rxst s-warn">El receptor está en ${rxFreq(r.c)!=null?fmt(rxFreq(r.c))+" MHz":"una frecuencia desconocida"}</small>`;}
   return `<select class="rxsel" data-k="${k}" aria-label="Receptor enlazado">${o.join("")}</select>${st}`;
 }
@@ -2013,12 +2078,20 @@ async function pushToReceivers(gid){
   const bad=chg.filter(x=>x.bad).length;
   const lines=chg.slice(0,12).map(x=>`${x.r.where}: ${rxFreq(x.r.c)!=null?fmt(rxFreq(x.r.c)):"?"} → ${fmt(x.e.f)} MHz`);
   if(!confirm(`Se programarán ${chg.length} canal${chg.length>1?"es":""} en los receptores:\n\n${lines.join("\n")}${chg.length>12?`\n… y ${chg.length-12} más`:""}${bad?`\n\nAtención: ${bad} de estas frecuencias tienen problemas de compatibilidad.`:""}${off.length?`\n\nNo se enviarán por falta de conexión: ${off.join(", ")}.`:""}\n\nDespués tendrás que sincronizar los emisores con los receptores.`))return;
-  let ok=0;const errs=[];
+  let ok=0;const errs=[],sent=[];
   for(const x of chg){
-    try{await sendFreq(x.r.dev.id,x.r.ch,x.e.f);ok++;logEvent(`Enviada ${fmt(x.e.f)} MHz a ${x.r.where}`,"ok");}
+    try{await sendFreq(x.r.dev.id,x.r.ch,x.e.f);ok++;sent.push({e:x.e,khz:x.e.f,where:x.r.where,name:chFull(x.g,x.i)});logEvent(`Enviada ${fmt(x.e.f)} MHz a ${x.r.where}`,"ok");}
     catch(err){errs.push(`${x.r.where}: ${err.message}`);logEvent(`No se pudo programar ${x.r.where}: ${err.message}`,"bad");}
   }
-  toast(errs.length?`Enviadas ${ok} de ${chg.length}. Fallaron: ${errs.join("; ")}`:`${ok} frecuencia${ok>1?"s":""} enviada${ok>1?"s":""}. Sincroniza los emisores.`);
+  if(!sent.length){toast(`No se ha podido enviar nada. ${errs.join("; ")}`);return;}
+  toast(`Enviadas ${ok} de ${chg.length}. Comprobando en los receptores…`);
+  const v=await verifyEntries(sent);
+  for(const b of v.bad)logEvent(`Sin confirmar: ${b.where} debería estar en ${fmt(b.khz)} MHz y está en ${b.now!=null?fmt(b.now):"?"}`,"bad",true);
+  const parts=[`${v.ok.length} de ${sent.length} verificada${sent.length>1?"s":""} en los receptores`];
+  if(v.bad.length)parts.push(`SIN CONFIRMAR: ${v.bad.map(b=>b.name).join(", ")}`);
+  if(errs.length)parts.push(`no se pudieron enviar: ${errs.join("; ")}`);
+  toast(parts.join(". ")+(v.bad.length||errs.length?".":". Sincroniza los emisores."));
+  return {ok:v.ok.length,bad:v.bad.length,errs:errs.length};
 }
 $("#sendAll").addEventListener("click",()=>pushToReceivers());
 function updateMonDot(){

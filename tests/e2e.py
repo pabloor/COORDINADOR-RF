@@ -182,6 +182,13 @@ def t_receptores(B):
         pg.evaluate(f"()=>pushToReceivers('{gid}')")
         pg.wait_for_timeout(2500)
         check("enviar programa la frecuencia en el receptor", pg.evaluate(f"()=>state.groups.find(g=>g.id==='{gid}').freqs.filter(e=>e.rx).every(e=>rxFreq(rxChan(e).c)===e.f)"))
+        pg.wait_for_function("()=>!/Comprobando/.test(document.getElementById('tbody').innerText)", timeout=15000)
+        check("tras enviar se vuelve a leer y la tabla marca «Verificado en el receptor»", "Verificado en el receptor" in pg.inner_text("#tbody"), pg.inner_text("#toast"))
+        check("el aviso dice cuántas se han verificado", "verificada" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        r = pg.evaluate(f"""async()=>{{const e=state.groups.find(g=>g.id==='{gid}').freqs.find(e=>e.rx);
+            e.f+=25;const v=await verifyEntries([{{e,khz:e.f,where:'x',name:'x'}}],700);return {{bad:v.bad.length,ok:v.ok.length}}}}""")
+        check("si el receptor no confirma lo enviado se marca como fallo", r["bad"] == 1 and r["ok"] == 0, r)
+        check("el fallo se ve en la tabla", "No confirmado" in pg.inner_text("#tbody"), pg.inner_text("#tbody")[:200])
         ctx.close()
 
 
@@ -468,6 +475,18 @@ def t_grafica_red(B):
         pg.mouse.move(X(free), geo["t"] + 40)
         pg.mouse.down(); pg.mouse.move(X(free) - 40, geo["t"] + 40, steps=5); pg.mouse.up()
         check("arrastrar el fondo sigue desplazando la vista", pg.evaluate("()=>view.a")!=view0[0])
+        # intermodulación bajo el cursor
+        pg.evaluate("()=>fit()")
+        geo = pg.evaluate("()=>{const r=cv.getBoundingClientRect();return {l:r.left,t:r.top,w:r.width,h:r.height,a:view.a,b:view.b}}")
+        X = lambda f: geo["l"] + 46 + (f - geo["a"]) / (geo["b"] - geo["a"]) * (geo["w"] - 46 - 14)
+        prod = pg.evaluate("()=>{const V=analysis.V.im3;return V&&V.length?V[Math.floor(V.length/2)]:null}")
+        check("hay productos de intermodulación calculados", prod is not None)
+        pg.mouse.move(X(prod), geo["t"] + geo["h"] - 24 - 8)
+        tip = pg.inner_text("#tip")
+        check("sobre un producto el cuadro dice qué portadoras lo producen", "intermodulación" in tip and "IMD 3er orden" in tip, tip)
+        check("las portadoras de origen se resaltan en la gráfica", pg.evaluate("()=>hoverSrc.size")>=2)
+        pg.mouse.move(X(prod), geo["t"] + 60)
+        check("fuera de la franja de productos no hay información de IMD", "intermodulación" not in pg.inner_text("#tip") and pg.evaluate("()=>hoverSrc.size")==0)
         # selector de red
         pg.click('[data-tab="mon"]')
         pg.click("#netToggle")
@@ -486,7 +505,34 @@ def t_grafica_red(B):
         ctx.close()
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_captura(B):
+    print("Captura de escaneo desde el analizador")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.evaluate("()=>{state.scan.f=[100000,100025,900000];state.scan.l=[-50,-50,-60];state.scan.enabled=false;save()}")
+        pg.click('[data-tab="live"]')
+        pg.select_option("#lvSrc", "sim")
+        pg.click("#lvConn")
+        pg.wait_for_function("()=>live.f&&live.f.length>10&&live.n>3", timeout=20000)
+        pg.select_option("#lvCapDur", "0")
+        pg.click("#lvSave")
+        r = pg.evaluate("()=>({n:state.scan.f.length,on:state.scan.enabled,th:state.scan.threshold,name:state.scan.name,keep:state.scan.f.includes(100000)&&state.scan.f.includes(900000),sorted:state.scan.f.every((f,i,a)=>!i||a[i-1]<=f)})")
+        check("capturar guarda el barrido, activa «evitar» y propone un umbral", r["n"] > 50 and r["on"] and -110 <= r["th"] <= -40, r)
+        check("fundir: lo que estaba fuera del rango capturado se conserva y todo queda ordenado", r["keep"] and r["sorted"], r)
+        check("el aviso resume ruido, umbral y zonas", "umbral" in pg.inner_text("#toast") and "zona" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        check("los controles del escaneo reflejan el cambio", pg.evaluate("()=>document.getElementById('scanOn').checked"))
+        n0 = pg.evaluate("()=>state.scan.f.length")
+        pg.select_option("#lvCapDur", "10")
+        pg.click("#lvSave")
+        check("la captura temporizada muestra la cuenta atrás", "Capturando" in pg.inner_text("#lvSave"), pg.inner_text("#lvSave"))
+        pg.wait_for_function("()=>!/Capturando/.test(document.getElementById('lvSave').textContent)", timeout=20000)
+        check("al terminar guarda el máximo del periodo", "máximo de 10 s" in pg.evaluate("()=>state.scan.name") and pg.evaluate("()=>state.scan.f.length")>=n0 - 5)
+        pg.click('[data-tab="live"]')
+        pg.click("#lvConn")
+        ctx.close()
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

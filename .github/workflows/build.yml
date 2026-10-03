@@ -34,6 +34,9 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt
       - name: Compilar Coordinador RF.app
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
         run: |
           pyinstaller --noconfirm --windowed --name "Coordinador RF" \
             --icon mac/icono.icns \
@@ -45,8 +48,9 @@ jobs:
           mkdir -p smoke && perl -e 'alarm shift; exec @ARGV' 90 \
             "dist/Coordinador RF.app/Contents/MacOS/Coordinador RF" -u /x/ad600_console.py 3 smoke/cmd.txt smoke/out.log | tee smoke/stdout.txt
           grep -q "ad600_console" smoke/stdout.txt
-          # Firma local (sin pagar cuenta de desarrollador): hace que macOS la trate como una app coherente.
-          codesign --force --deep -s - "dist/Coordinador RF.app"
+          # Firma sin pagar cuenta de desarrollador: con el certificado propio (secretos MAC_CERT_P12 y MAC_CERT_PASSWORD) la identidad
+          # es la misma en todas las versiones y macOS conserva los permisos; sin él, firma ad hoc.
+          bash mac/firmar.sh "dist/Coordinador RF.app"
           ditto -c -k --keepParent "dist/Coordinador RF.app" "Coordinador-RF-Mac${{ matrix.suffix }}.zip"
       - uses: actions/upload-artifact@v4
         with:
@@ -59,6 +63,13 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Coordinador RF ${{ env.TAG }}
           body_path: .github/release-notes.md
+
+  probar-firma:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/firma_mac.sh
 
   probar-actualizacion:
     # Actualización completa sobre la app real: descarga manipulada rechazada y actualización buena (ver tests/updater_mac.sh)
