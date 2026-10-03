@@ -120,6 +120,17 @@ class ShureDriver(Driver):
     def set_frequency(self, ch, khz):
         self.send(f"< SET {int(ch)} FREQUENCY {int(khz):06d} >")
 
+    def arm_meters(self):
+        """Pide la telemetría (SAMPLE): para todo el equipo y, si hace falta, canal a canal (algunos modelos, como los Axient, solo
+        la envían así). Un equipo que no la admita responde con un error, que queda anotado en el diagnóstico."""
+        self.send("< SET 0 METER_RATE 00500 >")
+        if not self.counts.get("SAMPLE"):
+            with LOCK:
+                chans = sorted(k for k in self.ch if k.isdigit() and k != "0")
+            for n in chans[:8]:
+                time.sleep(0.15)
+                self.send(f"< SET {n} METER_RATE 00500 >")
+
     def run(self):
         while not self.halt.is_set():
             try:
@@ -130,10 +141,10 @@ class ShureDriver(Driver):
                 self.t_connect = now()
                 self.counts, self.seen = {}, []
                 # Cada orden por separado y con una pausa: algunos equipos solo atienden bien la primera de un paquete.
-                for cmd in ("< GET MODEL >", "< GET 0 ALL >", "< SET 0 METER_RATE 00500 >"):
+                for cmd in ("< GET MODEL >", "< GET 0 ALL >"):
                     self.send(cmd)
                     time.sleep(0.15)
-                buf, last_poll, self.last_rx = "", now(), now()
+                buf, last_poll, self.last_rx, armed = "", now(), now(), False
                 while not self.halt.is_set():
                     try:
                         data = self.sock.recv(4096)
@@ -145,10 +156,13 @@ class ShureDriver(Driver):
                         buf += data.decode("latin-1")
                         self.last_rx = now()
                         buf = self.consume(buf)
+                    if not armed and now() - self.t_connect > 1.5:  # ya han llegado los canales: se pide la telemetría
+                        self.arm_meters()
+                        armed = True
                     if now() - last_poll > 30:  # refresco periódico (y comprobación de vida); se vuelve a pedir la telemetría
                         self.send("< GET 0 ALL >")
                         time.sleep(0.15)
-                        self.send("< SET 0 METER_RATE 00500 >")
+                        self.arm_meters()
                         last_poll = now()
                     if now() - self.last_rx > 15:
                         raise ConnectionError("el receptor no responde")

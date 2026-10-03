@@ -569,7 +569,12 @@ def t_shure_sin_medidores(B):
             if pg.evaluate("async()=>{const d=(await diskApi('/status')).devices[0];return !!(d&&d.online&&d.channels['1']&&d.channels['1'].bars===4)}"):
                 break
             pg.wait_for_timeout(250)
-        check("las tres órdenes iniciales llegan como mensajes separados", len(got) >= 3 and got[0].strip() == "< GET MODEL >" and any("METER_RATE" in g and "GET" not in g for g in got), got[:4])
+        for _ in range(20):
+            if any("SET 1 METER_RATE" in g for g in got):
+                break
+            pg.wait_for_timeout(250)
+        check("si no llegan medidores se piden también canal a canal", any("SET 1 METER_RATE" in g for g in got), got)
+        check("las órdenes iniciales llegan como mensajes separados", len(got) >= 3 and got[1].strip() == "< GET 0 ALL >" and got[0].strip() == "< GET MODEL >" and any("SET 0 METER_RATE" in g for g in got), got[:4])
         st = pg.evaluate("async()=>(await diskApi('/status')).devices[0]")
         check("sin medidores: 0 muestras y los datos de los canales sí llegan (frecuencia, nombre, batería)", st["samples"] == 0 and st["channels"]["1"]["name"] == "Voz" and st["channels"]["1"]["bars"] == 4, st)
         t = pg.evaluate("async()=>(await diskApi('/diagnostics')).text")
