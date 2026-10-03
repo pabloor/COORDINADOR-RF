@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Publicar una release con esta etiqueta (por ejemplo v1.4). Vacío = solo compilar."
+        description: "Publicar una release con esta etiqueta (por ejemplo v1.5). Vacío = solo compilar."
         required: false
         default: ""
   push:
@@ -14,10 +14,20 @@ on:
 permissions:
   contents: write
 
+env:
+  HIDDEN: "--paths ad600 --hidden-import ad600_bridge --hidden-import ad600_console --hidden-import ad600_discovery --hidden-import ad600_engine --hidden-import ad600_native --hidden-import paths"
+  TAG: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
+
 jobs:
   mac:
-    runs-on: macos-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest, suffix: "" }          # Mac con chip de Apple (M1, M2…)
+          - { runner: macos-15-intel, suffix: "-Intel" }  # Mac con procesador Intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,36 +39,30 @@ jobs:
             --icon mac/icono.icns \
             --osx-bundle-identifier local.coordinador-rf \
             --add-data "coordinador-rf.html:." --add-data "mac/icono.png:." \
-            --paths ad600 --hidden-import ad600_bridge --hidden-import ad600_console --hidden-import ad600_discovery --hidden-import ad600_engine --hidden-import ad600_native --hidden-import paths \
+            $HIDDEN \
             puente-rf.py
-          # Prueba: el motor del AD600 se lanza como subproceso de la propia app. Debe ejecutar su consola y salir (código 0).
+          # Prueba: el motor del AD600 se lanza como subproceso de la propia app. Debe ejecutar su consola y salir.
           mkdir -p smoke && perl -e 'alarm shift; exec @ARGV' 90 \
             "dist/Coordinador RF.app/Contents/MacOS/Coordinador RF" -u /x/ad600_console.py 3 smoke/cmd.txt smoke/out.log | tee smoke/stdout.txt
           grep -q "ad600_console" smoke/stdout.txt
           # Firma local (sin pagar cuenta de desarrollador): hace que macOS la trate como una app coherente.
           codesign --force --deep -s - "dist/Coordinador RF.app"
-          ditto -c -k --keepParent "dist/Coordinador RF.app" "Coordinador-RF-Mac.zip"
+          ditto -c -k --keepParent "dist/Coordinador RF.app" "Coordinador-RF-Mac${{ matrix.suffix }}.zip"
       - uses: actions/upload-artifact@v4
-        with: { name: Coordinador-RF-Mac, path: Coordinador-RF-Mac.zip }
-      - if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+        with:
+          name: Coordinador-RF-Mac${{ matrix.suffix }}
+          path: Coordinador-RF-Mac${{ matrix.suffix }}.zip
+      - if: env.TAG != ''
         uses: softprops/action-gh-release@v2
         with:
-          files: Coordinador-RF-Mac.zip
-          tag_name: ${{ inputs.version || github.ref_name }}
-          name: Coordinador RF ${{ inputs.version || github.ref_name }}
-          body: |
-            **Mac:** descarga `Coordinador-RF-Mac.zip`, descomprime y arrastra `Coordinador RF.app` a Aplicaciones
-            (sustituye la anterior; tus proyectos se conservan). La primera vez, clic derecho → Abrir.
-            Si pregunta por conexiones de red, acepta: hace falta para los receptores y el AD600.
-
-            **Windows:** descarga `Coordinador RF.exe` y haz doble clic.
-
-            Novedades: importar receptores de red a la coordinación, enlazar canales virtuales y enviar frecuencias,
-            y analizador de espectro Shure AD600 por red (experimental, sin probar con equipo real).
+          files: Coordinador-RF-Mac${{ matrix.suffix }}.zip
+          tag_name: ${{ env.TAG }}
+          name: Coordinador RF ${{ env.TAG }}
+          body_path: .github/release-notes.md
 
   windows:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -71,10 +75,14 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed --name "Coordinador RF" \
             --icon icono.ico \
             --add-data "coordinador-rf.html;." --add-data "mac/icono.png;." \
-            --paths ad600 --hidden-import ad600_bridge --hidden-import ad600_console --hidden-import ad600_discovery --hidden-import ad600_engine --hidden-import ad600_native --hidden-import paths \
+            $HIDDEN \
             puente-rf.py
       - uses: actions/upload-artifact@v4
         with: { name: Coordinador-RF-Windows, path: "dist/Coordinador RF.exe" }
-      - if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+      - if: env.TAG != ''
         uses: softprops/action-gh-release@v2
-        with: { files: "dist/Coordinador RF.exe", tag_name: "${{ inputs.version || github.ref_name }}" }
+        with:
+          files: "dist/Coordinador RF.exe"
+          tag_name: ${{ env.TAG }}
+          name: Coordinador RF ${{ env.TAG }}
+          body_path: .github/release-notes.md

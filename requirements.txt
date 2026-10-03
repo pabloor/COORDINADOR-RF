@@ -1,3 +1,4 @@
 pyserial
 pywebview
 pyinstaller
+certifi

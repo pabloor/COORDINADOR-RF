@@ -29,12 +29,12 @@ desde el propio puente se rellena sola. Sin clave nadie puede leer ni cambiar na
 Solo biblioteca estándar de Python 3.8+.
 """
 import argparse, errno, ipaddress, json, shutil, os, queue, random, re, secrets, signal, socket, sys, threading, time, urllib.request, webbrowser
-import subprocess
+import subprocess, ssl, unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.4"
+VERSION = "1.5"
 try:
     import serial  # pyserial: solo hace falta para el analizador
     from serial.tools import list_ports
@@ -626,12 +626,37 @@ class AD600(Analyzer):
                                "Revisa que el Mac y el AD600 estén en la misma red.")
         return ifd, dev
 
+    @staticmethod
+    def throttled_bridge(br_mod):
+        """El Bridge original reconstruye el barrido completo con CADA trozo (frame) que llega: en rangos anchos son miles
+        de trozos por barrido y el Python se atasca. Esta versión publica como mucho cada AD600_PUBLISH_MIN segundos
+        (0,25 por defecto) y guarda el resto para flush(), sin tocar el código original."""
+        gap = float(os.environ.get("AD600_PUBLISH_MIN", "0.25"))
+
+        class ThrottledBridge(br_mod.Bridge):
+            _last_pub, _dirty = 0.0, False
+
+            def _publish(self):  # se llama con el cerrojo ya tomado, desde feed()
+                t = time.time()
+                if t - self._last_pub < gap:
+                    self._dirty = True
+                    return
+                self._last_pub, self._dirty = t, False
+                super()._publish()
+
+            def flush(self):
+                with self._cv:
+                    if self._dirty:
+                        self._last_pub, self._dirty = time.time(), False
+                        super()._publish()
+        return ThrottledBridge
+
     def open(self):
         self.br_mod, disc, eng_mod = self.ensure_modules()
         self.status("Buscando el AD600 en la red…")
         ifd, dev = self.find_device(disc)
         self.ip = dev.get("device_ip")
-        self.br = self.br_mod.Bridge(port=0)  # solo ensambla barridos: su servidor HTTP no se arranca
+        self.br = self.throttled_bridge(self.br_mod)(port=0)  # solo ensambla barridos: su servidor HTTP no se arranca
         self.eng = eng_mod.Engine(bridge=self.br)
         self.br.on_config_change = self.eng.apply_config
         self.br.apply_configuration(self.scan_cfg())
@@ -677,6 +702,7 @@ class AD600(Analyzer):
             if changed:
                 self.rearm_until = now() + 90  # cambia rango, RBW o antenas: el motor se reconecta solo
                 self.br.apply_configuration(self.scan_cfg())
+            self.br.flush()
             tr = self.br.trace
             if tr and tr["sweepId"] != last and now() - t_pub >= 0.25:
                 last, t_pub = tr["sweepId"], now()
@@ -1024,6 +1050,231 @@ SSE_CLIENTS = 0        # navegadores con la app abierta (conexiones de eventos a
 IDLE_SINCE = now()     # desde cuándo no hay ninguno
 
 
+
+# ---------------------------------------------------------------------------------------------
+# Archivos del usuario: proyectos, informes y registros. Van a Documentos/Coordinador RF (visible en el
+# Finder y fácil de copiar); si no se puede escribir ahí, a la carpeta de configuración.
+# ---------------------------------------------------------------------------------------------
+MAX_BODY = 25_000_000  # los proyectos con un escaneo largo pueden pasar de 1 MB
+UPDATE_REPO = "pabloor/COORDINADOR-RF"
+_DOCS = {}
+
+
+def user_dir(sub):
+    if "base" not in _DOCS:
+        base = os.path.join(os.path.expanduser("~"), "Documents", "Coordinador RF")
+        try:
+            os.makedirs(base, exist_ok=True)
+            if not os.access(base, os.W_OK):
+                raise OSError("sin permiso de escritura")
+        except OSError:
+            base = config_dir()
+        _DOCS["base"] = base
+    d = os.path.join(_DOCS["base"], sub)
+    try:
+        os.makedirs(d, exist_ok=True)
+        return d
+    except OSError:
+        d = os.path.join(config_dir(), sub)
+        os.makedirs(d, exist_ok=True)
+        return d
+
+
+def slug(name, default="archivo"):
+    t = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", t).strip("-._")[:40] or default
+
+
+def write_atomic(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+PROJ_ID = re.compile(r"^[a-z0-9]{3,32}$")
+
+
+def proj_paths():
+    d = user_dir("Proyectos")
+    out = {}
+    for fn in os.listdir(d):
+        m = re.search(r"--([a-z0-9]{3,32})\.json$", fn)
+        if m:
+            out[m.group(1)] = os.path.join(d, fn)
+    return d, out
+
+
+def projects_list():
+    d, files = proj_paths()
+    out = []
+    for pid, path in files.items():
+        try:
+            with open(path, encoding="utf-8") as f:
+                j = json.load(f)
+            out.append({"id": pid, "name": str(j.get("name") or pid), "t": int(j.get("t") or 0)})
+        except (OSError, ValueError):
+            continue
+    return {"dir": d, "projects": sorted(out, key=lambda x: -x["t"])}
+
+
+def project_get(pid):
+    if not PROJ_ID.match(pid or ""):
+        raise ValueError("identificador no válido")
+    _, files = proj_paths()
+    if pid not in files:
+        raise ValueError("proyecto no encontrado")
+    with open(files[pid], encoding="utf-8") as f:
+        return json.load(f)
+
+
+def project_save(body):
+    pid = str(body.get("id") or "")
+    if not PROJ_ID.match(pid) or not isinstance(body.get("state"), dict):
+        raise ValueError("proyecto no válido")
+    name = str(body.get("name") or "Proyecto")[:80]
+    d, files = proj_paths()
+    path = os.path.join(d, f"{slug(name, 'proyecto')}--{pid}.json")
+    write_atomic(path, json.dumps({"id": pid, "name": name, "t": int(body.get("t") or now() * 1000), "state": body["state"]},
+                                  ensure_ascii=False))
+    old = files.get(pid)
+    if old and old != path:
+        try:
+            os.remove(old)
+        except OSError:
+            pass
+    return d
+
+
+def project_delete(pid):
+    if not PROJ_ID.match(pid or ""):
+        raise ValueError("identificador no válido")
+    _, files = proj_paths()
+    if pid in files:
+        os.remove(files[pid])
+
+
+def reveal(path):
+    """Abre una carpeta o un archivo con el programa del sistema (Finder en Mac)."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        elif os.name == "nt":
+            os.startfile(path)  # noqa
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except Exception:
+        pass
+
+
+def save_file(kind, name, content, open_it):
+    """Guarda un archivo de texto en Documentos/Coordinador RF/<tipo>. Los informes (HTML) se abren en el navegador
+    del sistema para imprimirlos o guardarlos como PDF; los demás se muestran en el Finder."""
+    sub = {"informe": "Informes", "registro": "Registros"}.get(kind)
+    if not sub or not isinstance(content, str):
+        raise ValueError("archivo no válido")
+    ext = ".html" if kind == "informe" else ".csv"
+    path = os.path.join(user_dir(sub), f"{slug(name, kind)}-{time.strftime('%Y%m%d-%H%M%S')}{ext}")
+    write_atomic(path, content)
+    if open_it:
+        if kind == "informe":
+            webbrowser.open("file://" + path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", path])
+        else:
+            reveal(os.path.dirname(path))
+    return path
+
+
+def notify(title, text):
+    """Notificación del sistema. En Mac con osascript; en otros sistemas se ignora si no hay forma sencilla."""
+    title, text = str(title or "Coordinador RF")[:80], str(text or "")[:200]
+    try:
+        if sys.platform == "darwin":
+            lit = lambda x: json.dumps(x, ensure_ascii=False)
+            subprocess.Popen(["osascript", "-e", f"display notification {lit(text)} with title {lit(title)}"])
+        elif shutil.which("notify-send"):
+            subprocess.Popen(["notify-send", title, text])
+    except Exception:
+        pass
+
+
+def tail(path, n):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 60000))
+            return b"\n".join(f.read().splitlines()[-n:]).decode("utf-8", "replace")
+    except OSError:
+        return "(no existe)"
+
+
+def diagnostics():
+    """Texto para pegar en un mensaje cuando algo no funciona: versiones, estado y últimas líneas de los registros."""
+    with LOCK:
+        devs = [f"  {d.cfg.get('kind')} {d.host}:{d.port} en línea={d.online} error={d.error or '-'} modelo={d.model or '-'}"
+                for d in DEVICES.values()]
+        an = dict(AN_STATE)
+    scratch = os.environ.get("AD600_ENGINE_SCRATCH") or os.path.join(config_dir(), "ad600")
+    parts = [
+        f"Coordinador RF puente {VERSION}",
+        f"Sistema: {sys.platform} {os.name}, Python {sys.version.split()[0]}, empaquetado={FROZEN}",
+        f"Carpeta de configuración: {config_dir()}",
+        f"Carpeta de documentos: {os.path.join(_DOCS['base']) if 'base' in _DOCS else '(aún sin usar)'}",
+        f"Analizador USB (pyserial): {'sí' if serial else 'no'}",
+        f"Analizador: {an.get('info') or '-'} | error: {an.get('error') or '-'}",
+        "Receptores:" + ("\n" + "\n".join(devs) if devs else " ninguno"),
+        "", "--- CoordinadorRF.log (últimas líneas) ---", tail(os.path.join(config_dir(), "CoordinadorRF.log"), 60),
+        "", "--- AD600 console_out.log (últimas líneas) ---", tail(os.path.join(scratch, "console_out.log"), 80),
+    ]
+    return "\n".join(parts)
+
+
+def _ver(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3])
+
+
+_UPD = {"t": 0.0, "data": None}
+
+
+def check_update():
+    """Consulta la última release publicada (repositorio público). Se guarda 6 horas; si falla, no molesta."""
+    if _UPD["data"] is not None and now() - _UPD["t"] < 6 * 3600:
+        return _UPD["data"]
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
+                                     headers={"User-Agent": "CoordinadorRF", "Accept": "application/vnd.github+json"})
+        ctxs = [ssl.create_default_context()]  # los certificados del sistema; en la app empaquetada puede faltar alguno…
+        try:
+            import certifi
+            ctxs.append(ssl.create_default_context(cafile=certifi.where()))  # …y entonces vale el paquete de certifi
+        except Exception:
+            pass
+        err = None
+        for ctx in ctxs:
+            try:
+                with urllib.request.urlopen(req, timeout=6, context=ctx) as r:
+                    j = json.load(r)
+                break
+            except (ssl.SSLError, urllib.error.URLError) as e:
+                err = e
+        else:
+            raise err
+        tag = str(j.get("tag_name") or "")
+        data = {"current": VERSION, "latest": tag.lstrip("v"), "url": j.get("html_url") or f"https://github.com/{UPDATE_REPO}/releases",
+                "newer": _ver(tag) > _ver(VERSION), "notes": str(j.get("body") or "")[:600]}
+    except Exception as e:
+        data = {"current": VERSION, "error": str(e)[:120]}
+    _UPD.update(t=now(), data=data)
+    return data
+
+
+def open_url(url):
+    if not str(url).startswith(f"https://github.com/{UPDATE_REPO}"):
+        raise ValueError("dirección no permitida")
+    webbrowser.open(url)
+
+
 def sse_enter():
     global SSE_CLIENTS
     with LOCK:
@@ -1141,6 +1392,17 @@ class Handler(BaseHTTPRequestHandler):
                     yield "data: " + json.dumps(snapshot(), ensure_ascii=False) + "\n\n"
                     time.sleep(0.5)
             self.sse(gen())
+        elif path == "/projects":
+            self.reply(projects_list())
+        elif path == "/projects/get":
+            try:
+                self.reply(project_get(parse_qs(urlparse(self.path).query).get("id", [""])[0]))
+            except (ValueError, OSError) as e:
+                self.reply({"error": str(e)}, 404)
+        elif path == "/diagnostics":
+            self.reply({"text": diagnostics()})
+        elif path == "/update":
+            self.reply(check_update())
         elif path == "/serial/ports":
             ports = list_serial()
             if ports is None:
@@ -1175,7 +1437,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(min(n, 1_000_000)) or b"null")
+            body = json.loads(self.rfile.read(min(n, MAX_BODY)) or b"null")
         except ValueError:
             return self.reply({"error": "JSON no válido"}, 400)
         try:
@@ -1186,6 +1448,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(discover(str((body or {}).get("ranges", "")) if isinstance(body, dict) else ""))
             if path == "/analyzer":
                 analyzer_cmd(body if isinstance(body, dict) else {})
+                return self.reply({"ok": True})
+            if path == "/projects/save":
+                return self.reply({"ok": True, "dir": project_save(body if isinstance(body, dict) else {})})
+            if path == "/projects/delete":
+                project_delete(str((body or {}).get("id") or ""))
+                return self.reply({"ok": True})
+            if path == "/reveal":
+                kind = (body or {}).get("kind")
+                reveal(user_dir({"projects": "Proyectos", "informes": "Informes", "registros": "Registros"}.get(kind, "Proyectos")))
+                return self.reply({"ok": True})
+            if path == "/files":
+                return self.reply({"ok": True, "path": save_file(body.get("kind"), body.get("name"), body.get("content"), bool(body.get("open")))})
+            if path == "/notify":
+                notify(body.get("title"), body.get("text"))
+                return self.reply({"ok": True})
+            if path == "/open":
+                open_url(body.get("url"))
                 return self.reply({"ok": True})
             if path == "/frequency":
                 did, ch, khz = body.get("id"), int(body.get("ch")), int(body.get("khz"))

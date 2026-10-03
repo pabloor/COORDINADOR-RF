@@ -101,6 +101,7 @@ tr.ghdr .rng{font-family:"Barlow",sans-serif;font-weight:400;color:var(--muted);
 tr.ch{cursor:pointer}
 tr.ch.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .chip{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;vertical-align:0}
+td input.chname{width:150px;font-size:13px}
 td input.freq{width:110px;font-variant-numeric:tabular-nums;font-weight:600}
 .gbtns{float:right;display:inline-flex;gap:6px;font-weight:400}
 td select.rxsel{max-width:210px;font-size:13px}
@@ -120,6 +121,10 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 .mbox textarea{width:100%;min-height:180px;font-size:12px}
 .mbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:5px;font-size:14px;z-index:9}
+.projsel{max-width:220px;font-weight:600}
+.updbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:7px 18px;background:color-mix(in srgb,var(--accent) 14%,var(--panel));border-bottom:1px solid var(--line);font-size:14px}
+.updbar span{margin-right:auto}
+.pbtns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
 [hidden]{display:none!important}
@@ -194,6 +199,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 <body>
 <header class="top">
   <h1><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M2 20 L6 20 L8 8 L10 20 L13 20 L14.5 13 L16 20 L20 20 L21 16 L22 20 L24 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>Coordinador RF</h1>
+  <select id="projSel" class="projsel" aria-label="Proyecto" title="Proyecto actual"></select>
   <nav class="tabs" role="tablist" aria-label="Vistas">
     <button role="tab" data-tab="coord" aria-selected="true">Coordinación</button>
     <button role="tab" data-tab="mon" aria-selected="false">Monitor de canales</button>
@@ -202,6 +208,8 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
   <div class="status" id="status" aria-live="polite"></div>
   <button class="btn primary" id="btnCoord">Coordinar frecuencias</button>
 </header>
+
+<div class="updbar" id="updBar" hidden><span id="updTxt"></span><button class="btn small primary" id="updGo">Ver novedades y descargar</button><button class="btn small ghost" id="updNo">Ahora no</button></div>
 
 <div class="app" id="viewCoord">
 <aside>
@@ -255,13 +263,20 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
   <details>
     <summary>Proyecto</summary>
     <div class="sec">
-      <p class="hint">El proyecto se guarda solo en este navegador. Copia el proyecto para tener una copia de seguridad o pasarlo a otro equipo.</p>
+      <p class="hint" id="projInfo"></p>
+      <div class="pbtns">
+        <button class="btn small primary" id="projNew">Nuevo proyecto</button>
+        <button class="btn small" id="projDup">Duplicar</button>
+        <button class="btn small" id="projRen">Renombrar</button>
+        <button class="btn small" id="projDel">Borrar</button>
+        <button class="btn small" id="projDir">Abrir carpeta</button>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn small" id="copyCsv">Copiar lista (CSV)</button>
         <button class="btn small" id="copyJson">Copiar proyecto</button>
-        <label class="btn small" style="display:inline-block">Cargar proyecto<input type="file" id="loadJson" accept=".json,.txt" class="sr"></label>
-        <button class="btn small" id="pasteJson">Pegar proyecto</button>
-        <button class="btn small" id="reset">Empezar de cero</button>
+        <label class="btn small" style="display:inline-block">Cargar como proyecto nuevo<input type="file" id="loadJson" accept=".json,.txt" class="sr"></label>
+        <button class="btn small" id="pasteJson">Pegar como proyecto nuevo</button>
+        <button class="btn small" id="reset">Vaciar este proyecto</button>
       </div>
     </div>
   </details>
@@ -292,10 +307,13 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
       <button class="btn small" id="lockAll">Bloquear todas</button>
       <button class="btn small" id="unlockAll">Desbloquear todas</button>
       <button class="btn small" id="clearFree">Vaciar no bloqueadas</button>
+      <button class="btn small" id="reportBtn" title="Abre una hoja con la coordinación lista para imprimir o guardar como PDF">Informe</button>
+      <button class="btn small" id="undoBtn" disabled title="Deshacer (⌘Z / Ctrl+Z)">Deshacer</button>
+      <button class="btn small" id="redoBtn" disabled title="Rehacer (⇧⌘Z / Ctrl+Y)">Rehacer</button>
       <button class="btn small primary" id="sendAll" title="Programa en los receptores de red las frecuencias de los canales enlazados">Enviar a receptores</button>
     </div>
     <table>
-      <thead><tr><th>Canal</th><th>Frecuencia (MHz)</th><th><span class="sr">Bloqueo</span></th><th>Estado</th><th>Receptor</th></tr></thead>
+      <thead><tr><th>Canal</th><th>Nombre</th><th>Frecuencia (MHz)</th><th><span class="sr">Bloqueo</span></th><th>Estado</th><th>Receptor</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -308,6 +326,10 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <label class="f">Umbral (dBm)<input type="number" step="1" id="monThr"></label>
     <button class="btn small" id="monAllOn">Todos encendidos</button>
     <button class="btn small" id="monAllAuto">Sin indicar</button>
+    <label class="chk" title="Suena cuando un canal pierde la portadora, aparece una señal no esperada o un receptor da una alarma"><input type="checkbox" id="alSound">Aviso sonoro</label>
+    <label class="chk" title="Notificación del sistema ante las mismas alarmas"><input type="checkbox" id="alNotify">Notificación</label>
+    <button class="btn small" id="alTest">Probar avisos</button>
+    <button class="btn small" id="logExport" title="Guarda el registro de eventos como archivo CSV">Exportar registro</button>
     <button class="btn small" id="monGoLive">Conectar analizador</button>
     <button class="btn small" id="netToggle">Receptores</button>
   </div>
@@ -323,6 +345,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <div class="netrow">
       <button class="btn small" id="netAdd">Añadir receptor a mano</button>
       <button class="btn small" id="netScan">Buscar en la red</button>
+      <button class="btn small" id="netDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
       <label class="f" style="min-width:260px">Rango a revisar (opcional)<input type="text" id="netRange" spellcheck="false" placeholder="Automático, o por ejemplo 192.168.10.0/24"></label>
     </div>
     <div id="netFound"></div>
@@ -361,6 +384,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <label class="chk"><input type="checkbox" id="lvAvg">Promedio</label>
     <button class="btn small" id="lvReset">Borrar máximo</button>
     <button class="btn small" id="lvSave">Guardar como escaneo</button>
+    <button class="btn small" id="lvDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
   </div>
   <div class="lstatus" id="lvStatus" aria-live="polite"></div>
   <div class="live-wrap">
@@ -374,6 +398,21 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <p class="hint">Donde tengas el proyecto (por ejemplo, la app abierta en Safari), usa Proyecto → Copiar proyecto y pégalo aquí. Sustituirá al proyecto actual.</p>
     <textarea id="pmText" spellcheck="false" aria-label="Proyecto copiado"></textarea>
     <div class="mbtns"><button class="btn" id="pmNo">Cancelar</button><button class="btn primary" id="pmYes">Cargar proyecto</button></div>
+  </div>
+</div>
+<div class="modal" id="nameModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="nmT">
+    <h2 id="nmT">Nombre</h2>
+    <input type="text" id="nmText" maxlength="80" style="width:100%" aria-label="Nombre">
+    <div class="mbtns"><button class="btn" id="nmNo">Cancelar</button><button class="btn primary" id="nmYes">Aceptar</button></div>
+  </div>
+</div>
+<div class="modal" id="diagModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="dgT" style="max-width:760px">
+    <h2 id="dgT">Diagnóstico</h2>
+    <p class="hint">Copia este texto y pégalo en el mensaje cuando algo no funcione. No incluye la clave del puente.</p>
+    <textarea id="dgText" readonly spellcheck="false" style="min-height:300px" aria-label="Diagnóstico"></textarea>
+    <div class="mbtns"><button class="btn" id="dgClose">Cerrar</button><button class="btn primary" id="dgCopy">Copiar</button></div>
   </div>
 </div>
 <div id="toast" hidden></div>
@@ -547,6 +586,9 @@ function mkGroup(name,qty,min,max,step,preset,ci){
   return {id:Math.random().toString(36).slice(2,9),name,autoName:false,color:COLORS[ci%COLORS.length],qty,min,max,segs:[[min,max]],step,preset,model:null,
     ...ruleOf(p),freqs:Array.from({length:qty},()=>({f:null,locked:false}))};
 }
+/* Etiquetas de canal: el nombre propio del canal (si lo tiene) y, entre paréntesis, su posición en el grupo. */
+const chName=(g,i)=>(g.freqs[i]&&g.freqs[i].name)||`${g.name} ${i+1}`;
+const chFull=(g,i)=>{const n=g.freqs[i]&&g.freqs[i].name;return n?`${n} (${g.name} ${i+1})`:`${g.name} ${i+1}`;};
 function setSegs(g,segs){g.segs=segs.map(x=>x.slice());g.min=segs[0][0];g.max=segs[segs.length-1][1];}
 function applyMode(g,s,i){const m=s.modes[i]||s.modes[0];g.preset="mode:"+s.modes.indexOf(m);Object.assign(g,ruleOf(m));}
 function applyModel(g,seriesId,bandName){
@@ -561,11 +603,11 @@ function defaultState(){
     scan:{f:[],l:[],name:"",threshold:-85,enabled:true},
     groups:[mkModelGroup("shure-ulxd","G51",8,0),mkModelGroup("senn-iemg4","A",4,1)],
     live:{source:"sim",start:470000,stop:694000,points:450,rfePts:"auto",tiny:"auto",adRbw:350,adAnt:"all",adHost:"",thr:-80,maxOn:true,avgOn:false,viaBridge:!("serial" in navigator),bport:""},
-    monitor:{expect:{}},
+    monitor:{expect:{},alerts:{sound:false,notify:false}},
     net:{url:"http://127.0.0.1:8765",key:"",devices:[]}};
 }
 function load(){
-  try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&Array.isArray(s.groups))return normalize(s);}catch(e){}
+  try{const s=JSON.parse(localStorage.getItem(PKEY(projIdx.cur)));if(s&&Array.isArray(s.groups))return normalize(s);}catch(e){}
   return null;
 }
 function normalize(s){
@@ -584,16 +626,49 @@ function normalize(s){
       ng.preset=k>=0?"mode:"+k:"custom";
     }
     ng.freqs=Array.from({length:ng.qty},(_,k)=>{const e=(g.freqs||[])[k]||{};const o=e.f!=null?{f:e.f|0,locked:!!e.locked}:{f:null,locked:false};
-      if(e.rx&&e.rx.d!=null&&e.rx.c!=null)o.rx={d:String(e.rx.d),c:String(e.rx.c)};return o;});
+      if(e.rx&&e.rx.d!=null&&e.rx.c!=null)o.rx={d:String(e.rx.d),c:String(e.rx.c)};
+      if(typeof e.name==="string"&&e.name.trim())o.name=e.name.trim().slice(0,40);return o;});
     st.groups.push(ng);
   });
   st.live=Object.assign(d.live,s.live||{});
-  st.monitor={expect:Object.assign({},(s.monitor&&s.monitor.expect)||{})};
+  st.monitor={expect:Object.assign({},(s.monitor&&s.monitor.expect)||{}),alerts:Object.assign({sound:false,notify:false},(s.monitor&&s.monitor.alerts)||{})};
   st.net=Object.assign(d.net,s.net||{});if(!Array.isArray(st.net.devices))st.net.devices=[];
   return st;
 }
+/* ---------- Proyectos ----------
+   Cada proyecto es un estado completo. Se guardan en este navegador y, cuando el puente está conectado, también como
+   archivos en Documentos/Coordinador RF/Proyectos: una copia de seguridad que se puede llevar a otro equipo. */
+const BRIDGE_META=document.querySelector('meta[name="puente-rf"]');
+const IDX_KEY="coordinador-rf.index.v1",DEL_KEY="coordinador-rf.borrados.v1";
+const PKEY=id=>"coordinador-rf.p."+id;
+const newId=()=>{const c="abcdefghijklmnopqrstuvwxyz0123456789";let a="";
+  try{const r=new Uint8Array(8);crypto.getRandomValues(r);for(const x of r)a+=c[x%36];}catch(e){for(let i=0;i<8;i++)a+=c[(Math.random()*36)|0];}return a;};
+const readJSON=k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}};
+const writeJSON=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
+let projIdx=(()=>{
+  let ix=readJSON(IDX_KEY);
+  if(ix&&Array.isArray(ix.list)&&ix.list.length&&ix.list.some(p=>p.id===ix.cur))return ix;
+  const id=newId();ix={cur:id,list:[{id,name:"Proyecto 1",t:Date.now(),fresh:true}]};
+  try{const old=localStorage.getItem(KEY);if(old){localStorage.setItem(PKEY(id),old);delete ix.list[0].fresh;}}catch(e){}  // el proyecto único de versiones anteriores pasa a ser «Proyecto 1»
+  writeJSON(IDX_KEY,ix);return ix;
+})();
 let state=load()||defaultState();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+const curProject=()=>projIdx.list.find(p=>p.id===projIdx.cur);
+function exportState(){const c=JSON.parse(JSON.stringify(state));c.net.key="";return c;}  // la clave del puente es de este ordenador: no va en copias
+/* Un proyecto recién creado y sin tocar (los dos grupos de ejemplo, sin frecuencias, TV, exclusiones ni escaneo; los receptores que el puente
+   aporta solo al conectar no cuentan). */
+function isDefaultPristine(st){
+  const g=st.groups,m=x=>x&&x.model;
+  return g.length===2&&m(g[0])&&g[0].model.series==="shure-ulxd"&&g[0].model.band==="G51"&&g[0].qty===8&&m(g[1])&&g[1].model.series==="senn-iemg4"&&g[1].qty===4
+    &&g.every(x=>x.freqs.every(e=>e.f==null&&!e.name&&!e.rx))&&!st.tv.length&&!st.excl&&!(st.scan.f&&st.scan.f.length);
+}
+function save(){
+  const p=curProject();if(p){p.t=Date.now();if(p.fresh&&!isDefaultPristine(state))delete p.fresh;}
+  try{localStorage.setItem(PKEY(projIdx.cur),JSON.stringify(state));}catch(e){}
+  writeJSON(IDX_KEY,projIdx);
+  try{commitHistory();}catch(e){}
+  scheduleDiskPush();
+}
 
 /* ---------- Utilidades numéricas ---------- */
 function lowerBound(a,x){let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m]<x)lo=m+1;else hi=m;}return lo;}
@@ -740,7 +815,7 @@ function analyzeNow(){
   const K={},V={};
   for(const k in FORMS){K[k]=Float64Array.from(L[k]).sort();const r=new Int32Array(K[k].length);for(let i=0;i<r.length;i++)r[i]=Math.floor(K[k][i]/SH);V[k]=r;}
   const unpack=key=>{const p=key-Math.floor(key/SH)*SH;return [Math.floor(p/1048576),Math.floor(p/1024)%1024,p%1024];};
-  const lab=x=>`${C[x].g.name} ${C[x].i+1}`,F=x=>fmt(C[x].f);
+  const lab=x=>chFull(C[x].g,C[x].i),F=x=>fmt(C[x].f);
   let bad=0;
   for(let t=0;t<n;t++){
     const c=C[t],g=c.g,iss=c.issues;
@@ -785,7 +860,7 @@ function renderTable(){
   if(!state.groups.length){$("#tbody").innerHTML=`<tr><td colspan="5" class="empty">Añade un grupo de equipos en el panel lateral para empezar.</td></tr>`;return;}
   state.groups.forEach(g=>{
     const nLk=g.freqs.filter(e=>e.rx).length,nFree=g.freqs.filter(e=>e.f!=null&&!e.rx).length;
-    h+=`<tr class="ghdr"><td colspan="5"><span class="gbtns">${nFree&&net.snap?`<button class="btn small" data-assign="${g.id}" title="Enlaza los canales virtuales con canales libres de receptores de red compatibles">Asignar a receptores</button>`:""}${nLk?`<button class="btn small" data-push="${g.id}">Enviar a receptores</button>`:""}</span><span class="chip" style="background:${esc(g.color)}"></span>${esc(g.name)}<span class="rng">${g.model?`${esc(libSeries(g.model.series).brand)} ${esc(libSeries(g.model.series).name)}, banda ${esc(g.model.band)}: `:""}${segsText(g.segs)}, paso ${g.step} kHz</span></td></tr>`;
+    h+=`<tr class="ghdr"><td colspan="6"><span class="gbtns">${nFree&&net.snap?`<button class="btn small" data-assign="${g.id}" title="Enlaza los canales virtuales con canales libres de receptores de red compatibles">Asignar a receptores</button>`:""}${nLk?`<button class="btn small" data-push="${g.id}">Enviar a receptores</button>`:""}</span><span class="chip" style="background:${esc(g.color)}"></span>${esc(g.name)}<span class="rng">${g.model?`${esc(libSeries(g.model.series).brand)} ${esc(libSeries(g.model.series).name)}, banda ${esc(g.model.band)}: `:""}${segsText(g.segs)}, paso ${g.step} kHz</span></td></tr>`;
     g.freqs.forEach((e,i)=>{
       const k=g.id+":"+i,c=map.get(k);
       let st;
@@ -793,6 +868,7 @@ function renderTable(){
       else if(!c||!c.issues.length)st=`<span class="st-ok">Compatible</span>`;
       else{const L=c.issues,show=L.slice(0,8);st=`<details class="iss"><summary>${L.length} problema${L.length>1?"s":""}</summary><ul>${show.map(x=>`<li>${esc(x)}</li>`).join("")}${L.length>8?`<li>y ${L.length-8} más</li>`:""}</ul></details>`;}
       h+=`<tr class="ch${selected===k?" sel":""}" data-k="${k}"><td><span class="chip" style="background:${esc(g.color)}"></span>${i+1}</td>`+
+        `<td><input class="chname" type="text" maxlength="40" data-k="${k}" value="${esc(e.name||"")}" placeholder="Nombre" aria-label="Nombre del canal ${esc(g.name)} ${i+1}"></td>`+
         `<td><input class="freq" type="text" inputmode="decimal" data-k="${k}" value="${e.f!=null?fmt(e.f):""}" placeholder="—" aria-label="Frecuencia ${esc(g.name)} ${i+1}"></td>`+
         `<td><button class="lock" data-lock="${k}" aria-pressed="${e.locked}" title="${e.locked?"Bloqueada: no cambia al coordinar":"Libre: se recalcula al coordinar"}">${lockSvg(e.locked)}</button></td><td>${st}</td><td>${rxCell(e,k)}</td></tr>`;
     });
@@ -802,6 +878,8 @@ function renderTable(){
 function entryByKey(k){const [id,i]=k.split(":");const g=state.groups.find(x=>x.id===id);return g?{g,e:g.freqs[+i],i:+i}:null;}
 $("#tbody").addEventListener("change",ev=>{
   const t=ev.target;
+  if(t.classList.contains("chname")){const r=entryByKey(t.dataset.k);if(!r)return;const v=t.value.trim().slice(0,40);
+    if(v)r.e.name=v;else delete r.e.name;save();if(typeof monSig!=="undefined")monSig="";return;}
   if(t.classList.contains("rxsel")){const r=entryByKey(t.dataset.k);if(!r)return;
     if(!t.value)delete r.e.rx;else{const i=t.value.lastIndexOf("|");r.e.rx={d:t.value.slice(0,i),c:t.value.slice(i+1)};}
     save();renderTable();return;}
@@ -811,7 +889,7 @@ $("#tbody").addEventListener("change",ev=>{
   if(t.value.trim()&&v===null){toast("Escribe la frecuencia en MHz, por ejemplo 536.250.");t.value=r.e.f!=null?fmt(r.e.f):"";return;}
   r.e.f=v;r.e.locked=v!==null;save();analyzeNow();renderTable();
 });
-$("#tbody").addEventListener("keydown",ev=>{if(ev.key==="Enter"&&ev.target.classList.contains("freq"))ev.target.blur();});
+$("#tbody").addEventListener("keydown",ev=>{if(ev.key==="Enter"&&(ev.target.classList.contains("freq")||ev.target.classList.contains("chname")))ev.target.blur();});
 $("#tbody").addEventListener("click",ev=>{
   const ab=ev.target.closest("[data-assign]");if(ab){assignGroup(ab.dataset.assign);return;}
   const pb=ev.target.closest("[data-push]");if(pb){pushToReceivers(pb.dataset.push);return;}
@@ -967,6 +1045,7 @@ $("#use35").addEventListener("change",e=>{state.opts.use35=e.target.checked;save
 $("#occBw").addEventListener("change",e=>{state.opts.occBw=Math.max(0,parseInt(e.target.value)||0);e.target.value=state.opts.occBw;save();analyzeNow();renderTable();});
 $("#pmse").addEventListener("change",e=>{state.opts.pmse=e.target.checked;save();analyzeNow();renderTable();draw();});
 function syncControls(){
+  syncAlertControls();
   $("#pmse").checked=!!state.opts.pmse;
   $("#excl").value=state.excl;$("#scanTh").value=state.scan.threshold;$("#scanOn").checked=state.scan.enabled;
   $("#use5").checked=state.opts.use5;$("#use33").checked=state.opts.use33;$("#use79").checked=state.opts.use79!==false;$("#use35").checked=state.opts.use35!==false;$("#occBw").value=state.opts.occBw;
@@ -981,25 +1060,25 @@ async function copyText(t){
 }
 $("#copyCsv").onclick=async()=>{
   const map=new Map();for(const c of analysis.C)map.set(c.g.id+":"+c.i,c);
-  const rows=[["Grupo","Canal","Frecuencia (MHz)","Bloqueada","Estado"]];
-  for(const g of state.groups)g.freqs.forEach((e,i)=>{const c=map.get(g.id+":"+i);rows.push([g.name,i+1,e.f!=null?fmt(e.f):"",e.locked?"Sí":"No",e.f==null?"Sin asignar":c&&c.issues.length?c.issues.join(" | "):"Compatible"]);});
+  const rows=[["Grupo","Canal","Nombre","Frecuencia (MHz)","Bloqueada","Estado"]];
+  for(const g of state.groups)g.freqs.forEach((e,i)=>{const c=map.get(g.id+":"+i);rows.push([g.name,i+1,e.name||"",e.f!=null?fmt(e.f):"",e.locked?"Sí":"No",e.f==null?"Sin asignar":c&&c.issues.length?c.issues.join(" | "):"Compatible"]);});
   const ok=await copyText(rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(";")).join("\n"));
   toast(ok?"Lista copiada. Pégala en una hoja de cálculo.":"No se ha podido copiar al portapapeles.");
 };
-$("#copyJson").onclick=async()=>{const ok=await copyText(JSON.stringify(state));toast(ok?"Proyecto copiado. Guárdalo en un archivo .json para cargarlo después.":"No se ha podido copiar al portapapeles.");};
+$("#copyJson").onclick=async()=>{const ok=await copyText(JSON.stringify(exportState()));toast(ok?"Proyecto copiado. Guárdalo en un archivo .json para cargarlo después.":"No se ha podido copiar al portapapeles.");};
 $("#loadJson").addEventListener("change",ev=>{
   const file=ev.target.files[0];if(!file)return;const rd=new FileReader();
-  rd.onload=()=>{try{const s=JSON.parse(rd.result);if(!Array.isArray(s.groups))throw 0;state=normalize(s);applyBridgeMeta();save();initAll();toast("Proyecto cargado.");}catch(e){toast("El archivo no es un proyecto válido.");}};
+  rd.onload=()=>{try{const s=JSON.parse(rd.result);if(!Array.isArray(s.groups))throw 0;importProject(s,file.name.replace(/\.[^.]+$/,"")||"Proyecto importado");toast("Proyecto cargado como proyecto nuevo.");}catch(e){toast("El archivo no es un proyecto válido.");}};
   rd.readAsText(file);ev.target.value="";
 });
-$("#reset").onclick=()=>{if(confirm("¿Borrar el proyecto actual y empezar con uno de ejemplo?")){state=defaultState();applyBridgeMeta();save();initAll();}};
+$("#reset").onclick=()=>{if(confirm("¿Vaciar este proyecto y empezar con uno de ejemplo? Los demás proyectos no cambian.")){state=defaultState();applyBridgeMeta();save();initAll();}};
 $("#pasteJson").onclick=()=>{$("#pmText").value="";$("#pasteModal").hidden=false;$("#pmText").focus();};
 $("#pmNo").onclick=()=>{$("#pasteModal").hidden=true;};
 $("#pasteModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#pasteModal").hidden=true;});
 $("#pmYes").onclick=()=>{
   let s;try{s=JSON.parse($("#pmText").value);if(!s||!Array.isArray(s.groups))throw 0;}
   catch(e){toast("Eso no parece un proyecto. Cópialo con Proyecto → Copiar proyecto y vuelve a pegarlo.");return;}
-  state=normalize(s);applyBridgeMeta();save();initAll();$("#pasteModal").hidden=true;toast("Proyecto cargado.");
+  importProject(s,"Proyecto pegado");$("#pasteModal").hidden=true;toast("Proyecto cargado como proyecto nuevo.");
 };
 $("#btnCoord").onclick=coordinate;
 
@@ -1096,7 +1175,7 @@ cv.addEventListener("pointermove",e=>{
   if(drag){const dx=e.clientX-drag.x;if(Math.abs(dx)>3)drag.moved=true;if(drag.moved){const r=cv.getBoundingClientRect();const df=-dx/(r.width-PADL-PADR)*(drag.b-drag.a);view={a:drag.a+df,b:drag.b+df};draw();}}
   const r=cv.getBoundingClientRect(),f=fAt(e),c=nearest(e);
   let txt=`<b>${fmt(Math.round(f))} MHz</b>`;
-  if(c)txt+=`<br>${esc(c.g.name)} ${c.i+1}: ${fmt(c.f)}${c.issues.length?`<br><span style="color:var(--im3)">${c.issues.length} problema${c.issues.length>1?"s":""}</span>`:""}`;
+  if(c)txt+=`<br>${esc(chFull(c.g,c.i))}: ${fmt(c.f)}${c.issues.length?`<br><span style="color:var(--im3)">${c.issues.length} problema${c.issues.length>1?"s":""}</span>`:""}`;
   const tvn=Math.floor((f-470000)/8000)+21;if(tvn>=TV_FIRST&&tvn<=TV_LAST)txt+=`<br><span style="color:var(--muted)">Canal TV ${tvn}${state.tv.includes(tvn)?" (ocupado)":""}</span>`;
   tip.innerHTML=txt;tip.hidden=false;
   let x=e.clientX-r.left+14,y=e.clientY-r.top+14;if(x+tip.offsetWidth>r.width)x=e.clientX-r.left-tip.offsetWidth-10;if(y+tip.offsetHeight>r.height)y=r.height-tip.offsetHeight-4;
@@ -1391,6 +1470,8 @@ function renderLiveStatus(){
   let t=live.err?live.status:(live.info||live.status||"Elige un analizador y pulsa Conectar. El simulador sirve para probar sin hardware.");
   if(live.src&&live.f){const bw=binW();t+=`  ${sweepRate().toFixed(1)} barridos/s, ${bw>=1000?(bw/1000).toFixed(2)+" MHz":Math.round(bw)+" kHz"} por punto.`;
     if(bw>250)t+=state.live.source==="ad600"?" Para distinguir portadoras cercanas, reduce el rango o baja la resolución.":" Para distinguir portadoras cercanas, reduce el rango o aumenta los puntos.";}
+  if(state.live.source==="ad600"){const pts=(state.live.stop-state.live.start)/state.live.adRbw;
+    if(pts>12000)t+=` Con este rango y esta resolución son unos ${Math.round(pts/1000)} 000 puntos por barrido: irá lento. Sube la resolución o reduce el rango.`;}
   el.textContent=t;
   const d=document.querySelector('.tabs [data-tab="live"]');d.innerHTML="Espectro en vivo"+(live.src?'<span class="dot" style="background:var(--ok)" aria-label="conectado"></span>':"");
 }
@@ -1411,9 +1492,9 @@ function syncLiveControls(){
   if(L.bport&&!$("#lvPort").querySelector(`option[value="${CSS.escape(L.bport)}"]`))$("#lvPort").innerHTML=`<option value="${esc(L.bport)}">${esc(L.bport)}</option>`;
   $("#lvPort").value=L.bport||"";
 }
-function liveRangeChanged(){save();if(live.src)live.src.setRange();if(live.f){live.max=null;}}
+function liveRangeChanged(){save();renderLiveStatus();if(live.src)live.src.setRange();if(live.f){live.max=null;}}
 $("#lvSrc").addEventListener("change",e=>{state.live.source=e.target.value;save();syncLiveControls();renderLiveStatus();if(state.live.viaBridge&&e.target.value!=="sim"&&e.target.value!=="ad600"&&state.net.key)loadBridgePorts();});
-$("#lvAdRbw").addEventListener("change",e=>{state.live.adRbw=+e.target.value;save();if(live.src)live.src.setRange();});
+$("#lvAdRbw").addEventListener("change",e=>{state.live.adRbw=+e.target.value;save();renderLiveStatus();if(live.src)live.src.setRange();});
 $("#lvAdAnt").addEventListener("change",e=>{state.live.adAnt=e.target.value;save();if(live.src)live.src.setRange();});
 $("#lvAdHost").addEventListener("change",e=>{state.live.adHost=e.target.value.trim();save();if(live.src)toast("La IP se aplicará al volver a conectar.");});
 $("#lvConn").addEventListener("click",liveConnect);
@@ -1488,7 +1569,7 @@ lcv.addEventListener("pointermove",e=>{
   const f=a+(e.clientX-r.left-PADL)/pw*(b-a);if(f<a||f>b){ltip.hidden=true;return;}
   let t=`<b>${fmt(Math.round(f))} MHz</b>`;
   if(live.f){const i=Math.min(live.f.length-1,lowerBound(live.f,f));t+=`<br>Ahora ${live.l[i].toFixed(1)} dBm`;if(live.max)t+=`, máximo ${live.max[i].toFixed(1)} dBm`;}
-  const px=(b-a)/pw*8;const c=monChannels().find(c=>Math.abs(c.f-f)<=px);if(c)t+=`<br>${esc(c.g.name)} ${c.i+1}: ${fmt(c.f)}`;
+  const px=(b-a)/pw*8;const c=monChannels().find(c=>Math.abs(c.f-f)<=px);if(c)t+=`<br>${esc(chFull(c.g,c.i))}: ${fmt(c.f)}`;
   ltip.innerHTML=t;ltip.hidden=false;
   let x=e.clientX-r.left+14;if(x+ltip.offsetWidth>r.width)x=e.clientX-r.left-ltip.offsetWidth-10;
   ltip.style.left=x+"px";ltip.style.top=Math.min(e.clientY-r.top+14,r.height-ltip.offsetHeight-4)+"px";
@@ -1527,7 +1608,7 @@ function chStatus(key,lv){
   if(lv>=thr)return ex==="off"?{c:"bad",t:"Señal no esperada",alarm:true}:{c:"ok",t:"Portadora presente"};
   return ex==="on"?{c:"warn",t:"Sin portadora",alarm:true}:{c:"idle",t:"Libre"};
 }
-function logEvent(txt,c){mon.log.unshift({t:new Date(),txt,c});if(mon.log.length>120)mon.log.length=120;}
+function logEvent(txt,c,alarm){mon.log.unshift({t:new Date(),txt,c});if(mon.log.length>120)mon.log.length=120;if(alarm)raiseAlert(txt);}
 function monitorTick(now){
   if(now-mon.lastTick<250)return;mon.lastTick=now;
   const hist=now-mon.lastHist>=500;if(hist)mon.lastHist=now;
@@ -1535,7 +1616,7 @@ function monitorTick(now){
     const lv=levelAt(c.f),s=chStatus(c.key,lv),prev=mon.st.get(c.key);
     mon.lv.set(c.key,lv);mon.st.set(c.key,s);
     if(hist){let h=mon.hist.get(c.key);if(!h)mon.hist.set(c.key,h=[]);h.push(lv);if(h.length>120)h.shift();}
-    if(prev&&prev.t!==s.t&&(s.alarm||prev.alarm))logEvent(`${c.g.name} ${c.i+1} (${fmt(c.f)}): ${s.t.toLowerCase()}`,s.alarm?s.c:"ok");
+    if(prev&&prev.t!==s.t&&(s.alarm||prev.alarm))logEvent(`${chFull(c.g,c.i)} (${fmt(c.f)}): ${s.t.toLowerCase()}`,s.alarm?s.c:"ok",!!s.alarm);
   }
   updateMonDot();
   if(tab==="mon"){renderTiles(false);renderSide();}
@@ -1546,12 +1627,12 @@ function renderMonConn(){
 }
 let monSig="";
 function renderTiles(force){
-  const ch=monChannels(),sig=ch.map(c=>c.key+"@"+c.f+c.g.color+c.g.name).join("|");
+  const ch=monChannels(),sig=ch.map(c=>c.key+"@"+c.f+c.g.color+chFull(c.g,c.i)).join("|");
   const box=$("#tiles");
   if(force||sig!==monSig){
     monSig=sig;
     box.innerHTML=ch.length?ch.map(c=>{const ex=state.monitor.expect[c.key]||"auto";return `<div class="tile" data-k="${c.key}" style="--gc:${esc(c.g.color)}">
-      <div class="th"><span>${esc(c.g.name)} ${c.i+1}</span><button class="exp" data-exp="${c.key}" data-v="${ex}">${EXP_TXT[ex]}</button></div>
+      <div class="th"><span title="${esc(chFull(c.g,c.i))}">${esc(chName(c.g,c.i))}</span><button class="exp" data-exp="${c.key}" data-v="${ex}">${EXP_TXT[ex]}</button></div>
       <div class="fq">${fmt(c.f)}</div>
       <div class="rw"><span class="lv">—</span><span class="st s-idle">Sin datos</span></div>
       <div class="meter"><i></i></div><canvas class="spark"></canvas><div class="rx"></div></div>`;}).join("")
@@ -1611,6 +1692,7 @@ async function netConnect(){
   let st;
   try{const r=await fetch(netBase()+"/status"+netQ());st=await r.json();if(!r.ok)throw new Error(st.error||("Error "+r.status));}
   catch(e){net.msg=e instanceof TypeError?"No se puede contactar con el puente. Comprueba que está arrancado y que abres la app desde el archivo en tu ordenador (la página publicada no puede conectar).":e.message;renderNetStatus();return;}
+  syncProjects();
   if(state.net.devices.length)await netPushDevices(true);
   else if(st.devices.length){state.net.devices=st.devices.map(d=>({id:d.id,kind:d.kind,host:d.host,port:d.port,name:d.name}));save();renderNetDevs();}
   const es=new EventSource(netBase()+"/events"+netQ());net.es=es;
@@ -1746,7 +1828,7 @@ function renderRxList(force){
     const c=r.c,ok=c.freq!=null&&coord.has(c.freq),k=`${esc(r.dev.id)}|${esc(r.ch)}`;
     const brand=r.dev.kind==="shure"?"Shure":"Sennheiser",free=chans.filter(x=>!used.has(x.f));
     const mine=x=>{const sr=x.g.model&&libSeries(x.g.model.series);return !!sr&&sr.brand===brand;};
-    const op=x=>`<option value="${x.f}">${esc(x.g.name)} ${x.i+1}: ${fmt(x.f)}</option>`;
+    const op=x=>`<option value="${x.f}">${esc(chFull(x.g,x.i))}: ${fmt(x.f)}</option>`;
     const a=free.filter(mine),o=free.filter(x=>!mine(x));
     const opts=(a.length?`<optgroup label="Grupos ${brand}">${a.map(op).join("")}</optgroup>`:"")+(o.length?`<optgroup label="${a.length?"Otros grupos":"Grupos"}">${o.map(op).join("")}</optgroup>`:"");
     return `<li><div style="flex:1;min-width:0"><b>${esc(r.label)}</b> <span class="t">${esc(r.where)}</span>
@@ -1832,7 +1914,7 @@ function importDevice(id){
     g=mkGroup(name,todo.length,known.length?Math.min(...known)-4000:470000,known.length?Math.max(...known)+4000:694000,25,"analog",state.groups.length);
     note=s?" Sus frecuencias no caben en ninguna banda de la biblioteca: el grupo es personalizado.":" No he reconocido el modelo: el grupo es personalizado, elige el equipo si quieres sus reglas.";
   }
-  g.freqs=todo.map((n,i)=>({f:fr[i],locked:fr[i]!=null,rx:{d:d.id,c:n}}));
+  g.freqs=todo.map((n,i)=>{const e={f:fr[i],locked:fr[i]!=null,rx:{d:d.id,c:n}},nm=String(d.channels[n].name||"").trim();if(nm)e.name=nm.slice(0,40);return e;});
   state.groups.push(g);save();renderGroups();analyzeNow();renderTable();
   toast(`Importado «${name}»: ${todo.length} canal${todo.length>1?"es":""} con sus frecuencias bloqueadas.${note} Míralo en Coordinación.`);
 }
@@ -1849,7 +1931,7 @@ function assignGroup(gid){
   const slots=g.freqs.map((e,i)=>({e,i})).filter(x=>x.e.f!=null&&!x.e.rx);
   const n=Math.min(slots.length,cands.length);
   if(!n){toast(slots.length?"No hay canales de receptor libres y compatibles con este grupo.":"Este grupo no tiene canales virtuales con frecuencia.");return;}
-  const lines=slots.slice(0,Math.min(n,12)).map((x,k)=>`${g.name} ${x.i+1} (${fmt(x.e.f)} MHz) → ${cands[k].where}`);
+  const lines=slots.slice(0,Math.min(n,12)).map((x,k)=>`${chFull(g,x.i)} (${fmt(x.e.f)} MHz) → ${cands[k].where}`);
   if(!confirm(`Se enlazarán ${n} de ${slots.length} canales de «${g.name}»:\n\n${lines.join("\n")}${n>12?`\n… y ${n-12} más`:""}${n<slots.length?`\n\nLos otros ${slots.length-n} se quedan virtuales.`:""}\n\nNo se envía nada a los receptores todavía.`))return;
   for(let k=0;k<n;k++)slots[k].e.rx={d:cands[k].dev.id,c:cands[k].ch};
   save();renderTable();toast(`${n} canales enlazados. Pulsa «Enviar a receptores» para programarlos.`);
@@ -1862,7 +1944,7 @@ async function pushToReceivers(gid){
   for(const g of state.groups){if(gid&&g.id!==gid)continue;
     g.freqs.forEach((e,i)=>{
       if(!e.rx||e.f==null)return;const r=rxChan(e);
-      if(!r||!r.dev.online){off.push(`${g.name} ${i+1}`);return;}
+      if(!r||!r.dev.online){off.push(chFull(g,i));return;}
       if(rxFreq(r.c)===e.f){same++;return;}
       chg.push({g,i,e,r,bad:issues.get(g.id+":"+i)||0});
     });}
@@ -1883,7 +1965,7 @@ function updateMonDot(){
   document.querySelector('.tabs [data-tab="mon"]').innerHTML="Monitor de canales"+(alarms?'<span class="dot" aria-label="alertas"></span>':"");
 }
 function netChanged(){
-  renderNetStatus();updateNetDevStatus();
+  renderNetStatus();updateNetDevStatus();syncProjects();checkUpdate();
   // Registro de cambios en los avisos de cada canal coordinado
   let any=false;
   for(const ch of monChannels()){
@@ -1891,20 +1973,338 @@ function netChanged(){
     const al=r?rxAlerts(r,state.monitor.expect[ch.key]||"auto"):[];
     if(al.some(a=>a.bad))any=true;
     const txt=al.map(a=>a.t).join(", "),prev=net.prev.get(ch.key);
-    if(prev!==undefined&&prev!==txt)logEvent(`${ch.g.name} ${ch.i+1} (${fmt(ch.f)}): ${txt?txt.toLowerCase():"sin avisos del receptor"}`,al.some(a=>a.bad)?"bad":txt?"warn":"ok");
+    if(prev!==undefined&&prev!==txt)logEvent(`${chFull(ch.g,ch.i)} (${fmt(ch.f)}): ${txt?txt.toLowerCase():"sin avisos del receptor"}`,al.some(a=>a.bad)?"bad":txt?"warn":"ok",al.some(a=>a.bad));
     net.prev.set(ch.key,txt);
   }
   net.alarm=any;updateMonDot();refreshCoordRx();
   if(tab==="mon"){renderTiles(false);renderRxList(false);renderSide();}
 }
 
-function initAll(){selected=null;syncControls();syncLiveControls();syncNetControls();renderGroups();renderTV();renderScanInfo();analyzeNow();renderTable();fit();monSig="";if(tab!=="coord")setTab(tab);}
-const BRIDGE_META=document.querySelector('meta[name="puente-rf"]');
+/* ---------- Deshacer y rehacer ----------
+   Cada vez que se guarda, si la coordinación (grupos, canales de TV, exclusiones y opciones) ha cambiado,
+   se apunta el estado anterior. No cubre los escaneos cargados ni los ajustes del monitor. */
+const hist={undo:[],redo:[],cur:null,applying:false};
+const histSnap=()=>JSON.stringify({groups:state.groups,tv:state.tv,excl:state.excl,opts:state.opts});
+function updateHistBtns(){
+  const u=$("#undoBtn"),r=$("#redoBtn");if(!u)return;
+  u.disabled=!hist.undo.length;r.disabled=!hist.redo.length;
+}
+function histReset(){hist.undo=[];hist.redo=[];hist.cur=histSnap();updateHistBtns();}
+function commitHistory(){
+  if(hist.applying)return;
+  const now=histSnap();
+  if(hist.cur===null){hist.cur=now;return;}
+  if(now===hist.cur)return;
+  hist.undo.push(hist.cur);if(hist.undo.length>80)hist.undo.shift();
+  hist.redo=[];hist.cur=now;updateHistBtns();
+}
+function histApply(snap){
+  hist.applying=true;
+  try{
+    const t=normalize(Object.assign(JSON.parse(JSON.stringify(state)),JSON.parse(snap)));
+    state.groups=t.groups;state.tv=t.tv;state.excl=t.excl;state.opts=t.opts;
+    selected=null;syncControls();renderGroups();renderTV();analyzeNow();renderTable();monSig="";
+    if(tab==="mon"){renderTiles(true);renderRxList(true);}
+    save();
+  }finally{hist.applying=false;}
+  updateHistBtns();
+}
+function undo(){if(!hist.undo.length||busy)return;hist.redo.push(hist.cur);hist.cur=hist.undo.pop();histApply(hist.cur);toast("Deshecho.");}
+function redo(){if(!hist.redo.length||busy)return;hist.undo.push(hist.cur);hist.cur=hist.redo.pop();histApply(hist.cur);toast("Rehecho.");}
+$("#undoBtn").onclick=undo;$("#redoBtn").onclick=redo;
+document.addEventListener("keydown",e=>{
+  if(tab!=="coord"||!(e.metaKey||e.ctrlKey)||e.altKey)return;
+  const t=e.target,editing=t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)&&!(t.type==="checkbox"||t.type==="button"));
+  if(editing)return;  // dentro de un campo de texto vale el deshacer del propio campo
+  const k=e.key.toLowerCase();
+  if(k==="z"&&!e.shiftKey){e.preventDefault();undo();}
+  else if((k==="z"&&e.shiftKey)||k==="y"){e.preventDefault();redo();}
+});
+histReset();
+
+/* ---------- Informe imprimible ----------
+   Una página HTML independiente (estilos y mapa incluidos). El puente la guarda en Documentos/Coordinador RF/Informes
+   y la abre en el navegador del sistema, desde donde se imprime o se guarda como PDF (la ventana de la app no imprime). */
+function niceStep(span){const t=[1,2,5,10,20,25,50,100,200];const want=span/8;return t.find(x=>x*1000>=want)||200;}
+function reportMap(rows){
+  const fs=rows.map(r=>r.f);if(!fs.length)return "";
+  const lo=Math.floor((Math.min(...fs)-6000)/1000)*1000,hi=Math.ceil((Math.max(...fs)+6000)/1000)*1000,W=1000,H=150,L=10,R=10,top=22,bot=28,pw=W-L-R;
+  const X=f=>L+(f-lo)/(hi-lo)*pw;let o=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Mapa de frecuencias">`;
+  o+=`<rect x="${L}" y="${top}" width="${pw}" height="${H-top-bot}" fill="#f6f7f8" stroke="#bbb"/>`;
+  for(const n of [...state.tv].sort((a,b)=>a-b)){const a=tvLo(n),b=a+8000;if(b<lo||a>hi)continue;
+    const x1=Math.max(L,X(a)),x2=Math.min(L+pw,X(b));
+    o+=`<rect x="${x1}" y="${top}" width="${x2-x1}" height="${H-top-bot}" fill="#6a5bb0" opacity=".16"/><text x="${(x1+x2)/2}" y="${top-6}" font-size="11" text-anchor="middle" fill="#5b4f99">TV ${n}</text>`;}
+  const st=niceStep(hi-lo);
+  for(let f=Math.ceil(lo/(st*1000))*st*1000;f<=hi;f+=st*1000)o+=`<line x1="${X(f)}" x2="${X(f)}" y1="${top}" y2="${H-bot}" stroke="#ddd"/><text x="${X(f)}" y="${H-bot+14}" font-size="11" text-anchor="middle" fill="#555">${f/1000}</text>`;
+  o+=`<text x="${W-R}" y="${H-4}" font-size="11" text-anchor="end" fill="#555">MHz</text>`;
+  for(const r of rows)o+=`<line x1="${X(r.f)}" x2="${X(r.f)}" y1="${top+4}" y2="${H-bot}" stroke="${esc(r.g.color)}" stroke-width="2.5" ${r.bad?'stroke-dasharray="4 3"':""}><title>${esc(r.label)}: ${fmt(r.f)} MHz</title></line>`;
+  return o+"</svg>";
+}
+function buildReport(){
+  const p=curProject(),name=p?p.name:"Coordinación",map=new Map();for(const c of analysis.C)map.set(c.g.id+":"+c.i,c);
+  const rows=[];let total=0,asg=0,bad=0;
+  for(const g of state.groups)g.freqs.forEach((e,i)=>{total++;if(e.f==null)return;asg++;const c=map.get(g.id+":"+i),b=!!(c&&c.issues.length);if(b)bad++;rows.push({f:e.f,g,label:chFull(g,i),bad:b});});
+  const od=[["3.º orden",true],["5.º orden",state.opts.use5],["7.º y 9.º orden",state.opts.use79],["3.º orden con 3 transmisores",state.opts.use33],["5.º orden con 3 transmisores",state.opts.use35]].filter(x=>x[1]).map(x=>x[0]).join(", ");
+  const tv=[...state.tv].sort((a,b)=>a-b).map(n=>`${n} (${fmt(tvLo(n))}–${fmt(tvLo(n)+8000)})`).join(", ");
+  const rxs=e=>{if(!e.rx)return "Virtual";const r=rxChan(e);if(!r)return "Receptor sin conexión";
+    const fr=rxFreq(r.c);return `${esc(r.where)}${e.f!=null?(fr===e.f?" · sintonizado":` · en ${fr!=null?fmt(fr)+" MHz":"frecuencia desconocida"}`):""}`;};
+  const groupHtml=state.groups.map(g=>{
+    const sr=g.model&&libSeries(g.model.series),info=sr?`${sr.brand} ${sr.name}, banda ${g.model.band}: `:"";
+    const trs=g.freqs.map((e,i)=>{const c=map.get(g.id+":"+i);
+      const stt=e.f==null?'<span class="m">Sin asignar</span>':c&&c.issues.length?`<span class="b">${c.issues.length} problema${c.issues.length>1?"s":""}</span><ul>${c.issues.slice(0,6).map(x=>`<li>${esc(x)}</li>`).join("")}${c.issues.length>6?`<li>y ${c.issues.length-6} más</li>`:""}</ul>`:'<span class="ok">Compatible</span>';
+      return `<tr><td>${i+1}</td><td>${esc(e.name||"")}</td><td class="f">${e.f!=null?fmt(e.f):"—"}</td><td>${e.locked?"Sí":""}</td><td>${stt}</td><td>${rxs(e)}</td></tr>`;}).join("");
+    return `<h3 style="border-left:6px solid ${esc(g.color)}">${esc(g.name)} <small>${esc(info)}${esc(segsText(g.segs))}, paso ${g.step} kHz</small></h3>
+      <table><thead><tr><th>Canal</th><th>Nombre</th><th>Frecuencia (MHz)</th><th>Fija</th><th>Estado</th><th>Receptor</th></tr></thead><tbody>${trs}</tbody></table>`;}).join("");
+  const sc=state.scan&&state.scan.f&&state.scan.f.length?`${esc(state.scan.name||"escaneo cargado")}, umbral ${state.scan.threshold} dBm, ${state.scan.enabled?"se evita":"no se tiene en cuenta"}`:"ninguno";
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(name)}: coordinación de frecuencias</title><style>
+  body{font:14px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#1b2531;max-width:900px;margin:24px auto;padding:0 18px}
+  h1{font-size:26px;margin:0 0 2px}h2{font-size:17px;margin:26px 0 8px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{font-size:15px;margin:18px 0 6px;padding-left:8px}
+  h3 small{font-weight:400;color:#556}.meta{color:#556;margin:0 0 14px}
+  table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #ccd;padding:4px 7px;text-align:left;vertical-align:top}th{background:#eef0f4}
+  td.f{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}tr{break-inside:avoid}.ok{color:#1d7a45;font-weight:600}.b{color:#b3232d;font-weight:600}.m{color:#778}
+  ul{margin:2px 0 0;padding-left:16px}.sum td{border:0;padding:2px 14px 2px 0}.sum b{font-size:18px}.foot{color:#667;font-size:12px;margin-top:26px}
+  button{font:inherit;padding:6px 14px;margin:0 0 12px}@media print{button{display:none}body{margin:0;max-width:none}}
+  </style></head><body><button onclick="window.print()">Imprimir o guardar como PDF</button>
+  <h1>${esc(name)}</h1><p class="meta">Coordinación de frecuencias · ${new Date().toLocaleString("es-ES",{dateStyle:"long",timeStyle:"short"})}</p>
+  <table class="sum"><tr><td><b>${asg}</b> de ${total} canales asignados</td><td><b>${bad}</b> con problemas</td><td><b>${state.groups.length}</b> grupos</td></tr></table>
+  ${rows.length?`<h2>Mapa de frecuencias</h2>${reportMap(rows)}<p class="meta">${state.groups.map(g=>`<span style="color:${esc(g.color)}">■</span> ${esc(g.name)}`).join(" &nbsp; ")}${bad?" &nbsp; (línea discontinua: canal con problemas)":""}</p>`:""}
+  <h2>Frecuencias</h2>${groupHtml||"<p>Sin grupos.</p>"}
+  <h2>Condiciones del cálculo</h2><table class="sum"><tr><td>Intermodulación</td><td>${esc(od)}</td></tr>
+  <tr><td>Margen de ocupación</td><td>±${state.opts.occBw|0} kHz por portadora</td></tr>
+  <tr><td>Espectro limitado a PMSE UE</td><td>${state.opts.pmse?"Sí (470–694, 823–832, 863–865 y 1785–1805 MHz)":"No"}</td></tr>
+  <tr><td>Canales de TV ocupados</td><td>${tv?esc(tv):"ninguno"}</td></tr>
+  <tr><td>Exclusiones</td><td>${state.excl.trim()?esc(state.excl.trim()).replace(/\n/g,"<br>"):"ninguna"}</td></tr>
+  <tr><td>Escaneo</td><td>${sc}</td></tr></table>
+  <p class="foot">Generado con Coordinador RF. Compruébalo siempre con el CNAF vigente y las condiciones de cada banda, y con un escaneo en el lugar.</p>
+  </body></html>`;
+}
+async function makeReport(){
+  const html=buildReport(),p=curProject();
+  if(diskReady()){
+    try{const j=await diskApi("/files",{kind:"informe",name:p?p.name:"informe",content:html,open:true});
+      toast("Informe abierto en el navegador (usa Imprimir → Guardar como PDF). Copia en "+j.path);return;}
+    catch(e){/* sin puente: se abre directamente */}
+  }
+  const w=window.open(URL.createObjectURL(new Blob([html],{type:"text/html"})),"_blank");
+  if(!w)toast("No se ha podido abrir el informe. Conecta el puente o permite ventanas emergentes.");
+}
+$("#reportBtn").onclick=makeReport;
+
+/* ---------- Avisos del monitor ----------
+   Sonido (WebAudio) y notificación del sistema (a través del puente en Mac; si no, la del navegador).
+   No se repite el mismo aviso en 20 s ni el sonido en menos de 2,5 s. */
+const alertSt={last:new Map(),lastSound:0};let actx=null;
+function beep(){
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume();
+    const t0=actx.currentTime;
+    [880,660,880].forEach((f,i)=>{const o=actx.createOscillator(),g=actx.createGain(),a=t0+i*.18;
+      o.type="sine";o.frequency.value=f;g.gain.setValueAtTime(0,a);g.gain.linearRampToValueAtTime(.25,a+.02);g.gain.linearRampToValueAtTime(0,a+.16);
+      o.connect(g);g.connect(actx.destination);o.start(a);o.stop(a+.18);});
+  }catch(e){}
+}
+async function sendNotification(title,text){
+  if(diskReady()){try{await diskApi("/notify",{title,text});return;}catch(e){}}
+  try{if("Notification" in window){if(Notification.permission==="default")await Notification.requestPermission();if(Notification.permission==="granted")new Notification(title,{body:text});}}catch(e){}
+}
+let notifBuf=[],notifT=0;
+function queueNotification(txt){  // varias alarmas a la vez (por ejemplo, una caída de la señal en todos los canales) salen en una sola notificación
+  notifBuf.push(txt);if(notifT)return;
+  notifT=setTimeout(()=>{const b=notifBuf;notifBuf=[];notifT=0;
+    sendNotification("Coordinador RF",b.length===1?b[0]:`${b.length} alarmas: ${b.slice(0,2).join(" · ")}${b.length>2?" …":""}`);},1500);
+}
+function raiseAlert(txt,force){
+  const a=state.monitor.alerts,t=Date.now();
+  if(!a.sound&&!a.notify)return;
+  if(!force){const l=alertSt.last.get(txt);if(l&&t-l<20000)return;alertSt.last.set(txt,t);}
+  if(a.sound&&(force||t-alertSt.lastSound>2500)){alertSt.lastSound=t;beep();}
+  if(a.notify){if(force)sendNotification("Coordinador RF",txt);else queueNotification(txt);}
+}
+function syncAlertControls(){const a=state.monitor.alerts;$("#alSound").checked=!!a.sound;$("#alNotify").checked=!!a.notify;}
+$("#alSound").addEventListener("change",e=>{state.monitor.alerts.sound=e.target.checked;save();if(e.target.checked)beep();});
+$("#alNotify").addEventListener("change",e=>{state.monitor.alerts.notify=e.target.checked;save();if(e.target.checked)sendNotification("Coordinador RF","Las notificaciones están activadas.");});
+$("#alTest").addEventListener("click",()=>{
+  const a=state.monitor.alerts;if(!a.sound&&!a.notify){toast("Activa el aviso sonoro o la notificación para probarlos.");return;}
+  raiseAlert("Prueba de aviso: así se verá una alarma.",true);
+});
+$("#logExport").addEventListener("click",async()=>{
+  if(!mon.log.length){toast("Todavía no hay eventos en el registro.");return;}
+  const kind={bad:"Alarma",warn:"Aviso",ok:"Normal"},p=curProject();
+  const rows=[["Fecha","Hora","Tipo","Evento"],...[...mon.log].reverse().map(e=>[e.t.toLocaleDateString("es-ES"),e.t.toTimeString().slice(0,8),kind[e.c]||e.c,e.txt])];
+  const csv="\ufeff"+rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(";")).join("\n");
+  if(diskReady()){try{const j=await diskApi("/files",{kind:"registro",name:"registro-"+(p?p.name:"monitor"),content:csv,open:true});toast("Registro guardado en "+j.path);return;}catch(e){}}
+  toast(await copyText(csv)?"Registro copiado. Pégalo en una hoja de cálculo.":"No se ha podido exportar el registro.");
+});
+
+/* ---------- Diagnóstico ---------- */
+function clientDiag(){
+  const p=curProject(),L=state.live;
+  return ["Coordinador RF (interfaz)",`Navegador: ${navigator.userAgent}`,
+    `Proyecto: ${p?p.name:"-"}, ${state.groups.length} grupos, ${analysis.C.length} canales con frecuencia`,
+    `Analizador en vivo: origen=${L.source}, conectado=${!!live.src}, estado="${live.err?live.status:(live.info||live.status||"-")}", rango ${fmt(L.start)}–${fmt(L.stop)} MHz`+
+      (L.source==="ad600"?`, resolución ${L.adRbw} kHz, antenas ${L.adAnt}, IP ${L.adHost||"automática"}`:""),
+    `Puente: ${net.ok?"conectado":"sin conexión"}. ${net.msg||""}`,`Receptores configurados: ${state.net.devices.length}`].join("\n");
+}
+async function showDiag(){
+  let txt=clientDiag()+"\n\n";
+  if(state.net.key){try{txt+=(await diskApi("/diagnostics")).text;}catch(e){txt+="(no se ha podido leer el puente: "+e.message+")";}}
+  else txt+="(el puente no está conectado: sin datos del puente)";
+  const t=$("#dgText");t.value=txt;$("#diagModal").hidden=false;t.focus();t.select();
+}
+$("#lvDiag").onclick=$("#netDiag").onclick=showDiag;
+$("#dgClose").onclick=()=>{$("#diagModal").hidden=true;};
+$("#diagModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#diagModal").hidden=true;});
+$("#dgCopy").onclick=async()=>{toast(await copyText($("#dgText").value)?"Diagnóstico copiado.":"No se ha podido copiar: selecciona el texto y cópialo a mano.");};
+
+/* ---------- Aviso de versión nueva ----------
+   El puente consulta la última release publicada; si hay una más nueva se avisa una vez por versión. */
+let updChecked=false,updInfo=null;
+async function checkUpdate(){
+  if(updChecked||!diskReady())return;updChecked=true;
+  try{
+    const j=await diskApi("/update");
+    if(!j.newer||localStorage.getItem("coordinador-rf.aviso")===j.latest)return;
+    updInfo=j;$("#updTxt").textContent=`Hay una versión nueva de Coordinador RF: ${j.latest} (tienes la ${j.current}).`;$("#updBar").hidden=false;
+  }catch(e){}
+}
+$("#updGo").onclick=async()=>{
+  if(!updInfo)return;
+  try{await diskApi("/open",{url:updInfo.url});}catch(e){window.open(updInfo.url,"_blank");}
+};
+$("#updNo").onclick=()=>{if(updInfo)try{localStorage.setItem("coordinador-rf.aviso",updInfo.latest);}catch(e){}$("#updBar").hidden=true;};
+
+/* ---------- Gestión de proyectos ---------- */
+let diskT=0,projDir="",projDiskMsg="";
+function diskReady(){try{return !!(state.net&&state.net.key)&&(!!BRIDGE_META||net.ok);}catch(e){return false;}}
+async function diskApi(path,body){
+  const url=netBase()+path+(path.includes("?")?"&k=":"?k=")+encodeURIComponent(state.net.key||"");
+  const r=await fetch(url,body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||("Error "+r.status));return j;
+}
+function scheduleDiskPush(){clearTimeout(diskT);if(!diskReady())return;diskT=setTimeout(diskPush,1500);}
+async function diskPush(){
+  const p=curProject();if(!p||!diskReady())return;
+  try{const j=await diskApi("/projects/save",{id:p.id,name:p.name,t:p.t,state:exportState()});projDir=j.dir||projDir;projDiskMsg="";}
+  catch(e){projDiskMsg="No se ha podido guardar la copia en disco: "+e.message;}
+  renderProjInfo();
+}
+const deletedIds=()=>readJSON(DEL_KEY)||[];
+async function flushDeleted(){
+  const ids=deletedIds();if(!ids.length||!diskReady())return;
+  for(const id of ids)try{await diskApi("/projects/delete",{id});}catch(e){return;}
+  writeJSON(DEL_KEY,[]);
+}
+/* Al conectar con el puente: recupera del disco los proyectos que falten aquí y sube los que solo existan aquí. */
+let projSynced=false;
+async function syncProjects(){
+  if(projSynced||!diskReady())return;projSynced=true;
+  try{
+    await flushDeleted();
+    const d=await diskApi("/projects");projDir=d.dir||"";
+    const gone=new Set(deletedIds());let got=0;
+    for(const dp of d.projects){
+      if(gone.has(dp.id))continue;
+      const lp=projIdx.list.find(x=>x.id===dp.id);
+      if(!lp||(dp.t>lp.t+1000&&dp.id!==projIdx.cur)){
+        const full=await diskApi("/projects/get?id="+encodeURIComponent(dp.id));
+        try{localStorage.setItem(PKEY(dp.id),JSON.stringify(full.state));}catch(e){}
+        if(lp){lp.name=dp.name;lp.t=dp.t;}else projIdx.list.push({id:dp.id,name:dp.name,t:dp.t});
+        got++;
+      }
+    }
+    const cp=curProject();
+    if(cp&&cp.fresh&&got>0&&isDefaultPristine(state)){  // primer arranque en un equipo con proyectos en disco: el vacío sobra
+      projIdx.list=projIdx.list.filter(x=>x.id!==cp.id);try{localStorage.removeItem(PKEY(cp.id));}catch(e){}
+      projIdx.cur=[...projIdx.list].sort((a,b)=>b.t-a.t)[0].id;
+      state=load()||defaultState();applyBridgeMeta();try{histReset();}catch(e){}
+      writeJSON(IDX_KEY,projIdx);initAll();reconnectNet();
+    }
+    for(const lp of projIdx.list){
+      const dp=d.projects.find(x=>x.id===lp.id);
+      if(!dp||lp.t>dp.t+1000){const st=lp.id===projIdx.cur?state:readJSON(PKEY(lp.id));
+        if(st){const c=JSON.parse(JSON.stringify(st));if(c.net)c.net.key="";await diskApi("/projects/save",{id:lp.id,name:lp.name,t:lp.t,state:c});}}
+    }
+    writeJSON(IDX_KEY,projIdx);renderProjects();
+    if(got)toast(`Recuperados ${got} proyecto${got>1?"s":""} de la carpeta de proyectos.`);
+  }catch(e){projSynced=false;projDiskMsg="No se ha podido sincronizar con la carpeta de proyectos: "+e.message;renderProjInfo();}
+}
+function renderProjInfo(){
+  const el=$("#projInfo");if(!el)return;const p=curProject();
+  el.textContent=`Proyecto actual: «${p?p.name:""}». Se guarda solo en este equipo`+
+    (projDir?` y en la carpeta ${projDir}.`:(diskReady()?".":". Con el puente conectado se guarda también en Documentos/Coordinador RF/Proyectos."))+(projDiskMsg?" "+projDiskMsg:"");
+}
+function renderProjects(){
+  const sel=$("#projSel");if(!sel)return;
+  sel.innerHTML=projIdx.list.map(p=>`<option value="${esc(p.id)}"${p.id===projIdx.cur?" selected":""}>${esc(p.name)}</option>`).join("");
+  renderProjInfo();
+}
+function askName(title,value){
+  return new Promise(res=>{
+    const m=$("#nameModal"),t=$("#nmText");$("#nmT").textContent=title;t.value=value||"";m.hidden=false;t.focus();t.select();
+    const done=v=>{m.hidden=true;$("#nmYes").onclick=$("#nmNo").onclick=null;t.onkeydown=null;res(v);};
+    $("#nmYes").onclick=()=>done(t.value.trim()||null);$("#nmNo").onclick=()=>done(null);
+    t.onkeydown=e=>{if(e.key==="Enter")done(t.value.trim()||null);else if(e.key==="Escape")done(null);};
+  });
+}
+function addProject(name,st){
+  const id=newId();projIdx.list.push({id,name:name.slice(0,80),t:Date.now()});
+  try{localStorage.setItem(PKEY(id),JSON.stringify(st));}catch(e){}
+  writeJSON(IDX_KEY,projIdx);return id;
+}
+function reconnectNet(){
+  if(net.es){net.es.close();net.es=null;net.ok=false;net.snap=null;}
+  net.rxSig="";
+  if(state.net.key)netConnect();else netChanged();
+}
+function switchProject(id){
+  if(id===projIdx.cur||!projIdx.list.some(p=>p.id===id))return;
+  save();clearTimeout(diskT);diskPush();
+  projIdx.cur=id;writeJSON(IDX_KEY,projIdx);
+  state=load()||defaultState();applyBridgeMeta();
+  try{histReset();}catch(e){}
+  save();initAll();renderProjects();reconnectNet();
+}
+async function projNew(){
+  const n=await askName("Nombre del proyecto nuevo","");if(!n)return;
+  const st=defaultState();addProject(n,st);const id=projIdx.list[projIdx.list.length-1].id;switchProject(id);
+}
+async function projDup(){
+  const p=curProject(),n=await askName("Nombre de la copia",`${p.name} (copia)`);if(!n)return;
+  save();const id=addProject(n,JSON.parse(JSON.stringify(state)));switchProject(id);
+}
+async function projRen(){
+  const p=curProject(),n=await askName("Nuevo nombre del proyecto",p.name);if(!n)return;
+  p.name=n.slice(0,80);writeJSON(IDX_KEY,projIdx);renderProjects();scheduleDiskPush();
+}
+async function projDel(){
+  const p=curProject();
+  if(!confirm(`¿Borrar el proyecto «${p.name}»? También se borra su copia en la carpeta de proyectos.`))return;
+  const id=p.id;clearTimeout(diskT);
+  projIdx.list=projIdx.list.filter(x=>x.id!==id);
+  try{localStorage.removeItem(PKEY(id));}catch(e){}
+  writeJSON(DEL_KEY,[...new Set([...deletedIds(),id])]);
+  if(!projIdx.list.length){const nid=addProject("Proyecto 1",defaultState());projIdx.cur=nid;}
+  else projIdx.cur=[...projIdx.list].sort((a,b)=>b.t-a.t)[0].id;
+  writeJSON(IDX_KEY,projIdx);
+  state=load()||defaultState();applyBridgeMeta();try{histReset();}catch(e){}
+  save();initAll();renderProjects();reconnectNet();flushDeleted();
+}
+function importProject(s,name){
+  const st=normalize(s);st.net.key="";const id=addProject(name,st);switchProject(id);
+}
+$("#projSel").addEventListener("change",e=>switchProject(e.target.value));
+$("#projNew").onclick=projNew;$("#projDup").onclick=projDup;$("#projRen").onclick=projRen;$("#projDel").onclick=projDel;
+$("#projDir").onclick=async()=>{
+  if(!diskReady()){toast("Conecta el puente para abrir la carpeta de proyectos.");return;}
+  try{await diskApi("/reveal",{kind:"projects"});}catch(e){toast("No se ha podido abrir la carpeta: "+e.message);}
+};
+
+function initAll(){selected=null;syncControls();syncLiveControls();syncNetControls();renderGroups();renderTV();renderScanInfo();analyzeNow();renderTable();fit();monSig="";renderProjects();if(tab!=="coord")setTab(tab);}
 /* Abierta desde el puente: su dirección y su clave mandan sobre las guardadas en el proyecto. */
 function applyBridgeMeta(){if(BRIDGE_META&&/^https?:$/.test(location.protocol)){state.net.url=location.origin;state.net.key=BRIDGE_META.content;}}
 applyBridgeMeta();save();
 initAll();
-if(BRIDGE_META){netConnect();}
+if(BRIDGE_META){netConnect();syncProjects();}
 if(document.fonts)document.fonts.ready.then(draw);
 </script>
 </body>
