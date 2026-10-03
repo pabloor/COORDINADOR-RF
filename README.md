@@ -28,6 +28,9 @@ Apple, macOS puede volver a pedir los permisos de red local y de Documentos tras
 
 - **Coordinación:** grupos de equipos con biblioteca Shure/Sennheiser (bandas y reglas de separación), canales de TV,
   exclusiones, escaneos CSV y cálculo de intermodulación (3.º, 5.º, 7.º/9.º y con 3 transmisores).
+- **Gráfica de coordinación:** la barra superior indica la frecuencia de la vista, la del cursor, el canal de TV y la línea
+  seleccionada. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
+  bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista.
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (botón *Informe*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).
 - **Varios proyectos** con nombre (selector de la cabecera). Se guardan en la app y, con el puente conectado, como archivos en
@@ -35,7 +38,8 @@ Apple, macOS puede volver a pedir los permisos de red local y de Documentos tras
   `Documentos/Coordinador RF/Informes` y `Registros`.
 - **Monitor de canales:** estado de cada canal con los niveles del analizador y los datos de los receptores en red, con aviso
   sonoro y notificación del sistema ante alarmas, y registro exportable a CSV.
-- **Receptores de red (Shure TCP 2202, Sennheiser SSC UDP 45):** *Importar a la coordinación* crea un grupo con sus frecuencias;
+- **Receptores de red (Shure TCP 2202, Sennheiser SSC UDP 45):** el selector *Red por la que buscar* limita la búsqueda a una
+  conexión del ordenador (cable, Wi-Fi…) en vez de revisarlas todas. *Importar a la coordinación* crea un grupo con sus frecuencias;
   *Asignar a receptores* enlaza canales virtuales con canales libres compatibles; *Enviar a receptores* programa las frecuencias.
 - **Espectro en vivo:** RF Explorer, tinySA (USB), simulador y Shure AD600 (red).
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).

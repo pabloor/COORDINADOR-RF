@@ -432,7 +432,61 @@ def t_actualizacion(B):
         ctx.close()
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_grafica_red(B):
+    print("Leyenda y arrastre en la gráfica, selector de red")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        coordinate(pg)
+        pg.evaluate("()=>fit()")
+        bar = pg.inner_text("#freqBar")
+        check("la leyenda indica el rango de la vista", "Vista" in bar and "MHz" in bar, bar)
+        geo = pg.evaluate("()=>{const r=cv.getBoundingClientRect();return {l:r.left,t:r.top,w:r.width,h:r.height,a:view.a,b:view.b}}")
+        X = lambda f: geo["l"] + 46 + (f - geo["a"]) / (geo["b"] - geo["a"]) * (geo["w"] - 46 - 14)
+        f0 = pg.evaluate("()=>state.groups[0].freqs[0].f")
+        y = geo["t"] + geo["h"] * 0.6
+        pg.mouse.move(X(f0 + 20000), y)
+        check("la leyenda sigue al cursor", "Cursor" in pg.inner_text("#freqBar") and "—" not in pg.inner_text("#freqBar").split("Cursor")[1].split("MHz")[0], pg.inner_text("#freqBar"))
+        pg.mouse.move(X(f0), y)
+        check("sobre una línea el cursor cambia a «agarrar»", pg.evaluate("()=>cv.classList.contains('grab')"))
+        view0 = pg.evaluate("()=>[view.a,view.b]")
+        pg.mouse.down()
+        pg.mouse.move(X(f0) + 30, y, steps=6)
+        check("mientras se arrastra la leyenda dice «Moviendo»", "Moviendo" in pg.inner_text("#freqBar"), pg.inner_text("#freqBar"))
+        pg.mouse.up()
+        pg.wait_for_timeout(300)
+        r = pg.evaluate("()=>({f:state.groups[0].freqs[0].f,l:state.groups[0].freqs[0].locked,v:[view.a,view.b]})")
+        check("arrastrar mueve la frecuencia (a pasos de 25 kHz) y la bloquea", r["f"] != f0 and r["f"] % 25 == 0 and r["l"], (f0, r))
+        check("arrastrar una línea no desplaza la vista", r["v"] == view0)
+        check("la tabla muestra la frecuencia nueva", pg.input_value("input.freq >> nth=0") == "%.3f" % (r["f"] / 1000))
+        pg.click("#undoBtn")
+        check("deshacer devuelve la línea a su sitio con un solo paso", pg.evaluate("()=>state.groups[0].freqs[0].f") == f0)
+        pg.click("#redoBtn")
+        # un clic sin mover solo selecciona; arrastrar fuera de las líneas desplaza la vista
+        pg.mouse.click(X(f0 + 0), y)
+        check("un clic sin mover no cambia la frecuencia", pg.evaluate("()=>state.groups[0].freqs[0].f") == r["f"])
+        free = pg.evaluate("()=>{const fs=analysis.C.map(c=>c.f).sort((a,b)=>a-b);let best=0,at=view.a;for(let i=0;i<fs.length-1;i++)if(fs[i+1]-fs[i]>best){best=fs[i+1]-fs[i];at=(fs[i]+fs[i+1])/2;}return at}")
+        pg.mouse.move(X(free), geo["t"] + 40)
+        pg.mouse.down(); pg.mouse.move(X(free) - 40, geo["t"] + 40, steps=5); pg.mouse.up()
+        check("arrastrar el fondo sigue desplazando la vista", pg.evaluate("()=>view.a")!=view0[0])
+        # selector de red
+        pg.click('[data-tab="mon"]')
+        pg.click("#netToggle")
+        pg.wait_for_timeout(600)
+        n = pg.evaluate("()=>document.querySelectorAll('#netIface option').length")
+        ifs = pg.evaluate("async()=>(await diskApi('/interfaces')).interfaces")
+        check("el selector de red lista «Todas» y las conexiones del ordenador", n == 1 + len(ifs) and n >= 1, (n, ifs))
+        bad = pg.evaluate("async()=>{try{await bridgePost('/discover',{iface:'10.254.254.1'});return ''}catch(e){return e.message}}")
+        check("pedir una conexión que no existe da un mensaje claro", "ya no está disponible" in bad, bad)
+        if ifs:
+            pg.select_option("#netIface", ifs[0]["ip"])
+            check("la elección se recuerda en el proyecto", pg.evaluate("()=>state.net.iface") == ifs[0]["ip"])
+            pg.click("#netScan")
+            pg.wait_for_function("()=>!document.querySelector('#netScan').disabled", timeout=60000)
+            check("buscar con una conexión elegida solo revisa su red", ifs[0]["network"] in pg.inner_text("#netFound"), pg.inner_text("#netFound"))
+        ctx.close()
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

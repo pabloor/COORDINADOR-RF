@@ -86,6 +86,10 @@ main{min-width:0;min-height:0;display:flex;flex-direction:column}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-right:auto}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:2px}
+.freqbar{display:flex;gap:4px 18px;flex-wrap:wrap;padding:6px 14px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line);background:var(--panel);font-variant-numeric:tabular-nums}
+.freqbar b{color:var(--ink);font-weight:600}
+.freqbar .fsel{color:var(--sel)}
+#spec.grab{cursor:grab}#spec.grabbing{cursor:ew-resize}
 .spec-wrap{position:relative;height:46%;min-height:260px;border-bottom:1px solid var(--line);background:var(--plot)}
 #spec{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y;cursor:grab}
 #spec:active{cursor:grabbing}
@@ -297,6 +301,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <button class="btn small ghost" id="zout" aria-label="Alejar">Alejar</button>
     <button class="btn small ghost" id="zfit">Ajustar vista</button>
   </div>
+  <div class="freqbar" id="freqBar" aria-live="off"></div>
   <div class="spec-wrap">
     <canvas id="spec" aria-label="Espectro con portadoras e intermodulación"></canvas>
     <div id="tip" hidden></div>
@@ -346,6 +351,8 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
       <button class="btn small" id="netAdd">Añadir receptor a mano</button>
       <button class="btn small" id="netScan">Buscar en la red</button>
       <button class="btn small" id="netDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
+      <label class="f" style="min-width:230px">Red por la que buscar<select id="netIface"><option value="">Todas las conexiones</option></select></label>
+      <button class="btn small ghost" id="netIfaceRefresh" title="Vuelve a leer las conexiones de red del ordenador">Actualizar redes</button>
       <label class="f" style="min-width:260px">Rango a revisar (opcional)<input type="text" id="netRange" spellcheck="false" placeholder="Automático, o por ejemplo 192.168.10.0/24"></label>
     </div>
     <div id="netFound"></div>
@@ -1162,6 +1169,17 @@ function draw(){
   g.textAlign="right";g.textBaseline="middle";
   if(S.f.length)for(let l=-120;l<=-20;l+=20){const y=yL(l);g.fillText(String(l),PADL-6,y);}
   g.save();g.translate(11,PADT+ph/2);g.rotate(-Math.PI/2);g.textAlign="center";g.fillText(S.f.length?"dBm":"",0,0);g.restore();
+  updFreqBar();
+}
+let cursorF=null,carDrag=null;
+function updFreqBar(){
+  const bar=$("#freqBar");if(!bar)return;
+  let h=`<span>Vista <b>${fmt(view.a)} – ${fmt(view.b)}</b> MHz</span>`;
+  h+=cursorF!=null?`<span>Cursor <b>${fmt(Math.round(cursorF))}</b> MHz${(()=>{const n=Math.floor((cursorF-470000)/8000)+21;return n>=TV_FIRST&&n<=TV_LAST?` · canal TV ${n}${state.tv.includes(n)?" (ocupado)":""}`:"";})()}</span>`:`<span>Cursor <b>—</b></span>`;
+  const r=selected?entryByKey(selected):null;
+  if(r&&r.e.f!=null)h+=`<span class="fsel">${carDrag?"Moviendo":"Seleccionada"}: <b>${esc(chFull(r.g,r.i))}</b> ${fmt(r.e.f)} MHz</span>`;
+  else h+=`<span>Haz clic en una línea para seleccionarla y arrástrala para moverla</span>`;
+  if(bar._h!==h){bar.innerHTML=h;bar._h=h;}
 }
 function fAt(e){const r=cv.getBoundingClientRect();return view.a+(e.clientX-r.left-PADL)/(r.width-PADL-PADR)*(view.b-view.a);}
 function zoom(center,k){let a=center-(center-view.a)*k,b=center+(view.b-center)*k;if(b-a<300){const m=(a+b)/2;a=m-150;b=m+150;}if(b-a>600000){const m=(a+b)/2;a=m-300000;b=m+300000;}view={a,b};draw();}
@@ -1170,8 +1188,26 @@ function nearest(e){
   for(const c of analysis.C){const d=Math.abs(c.f-f)*pxPerK;if(d<bd){bd=d;best=c;}}return best;
 }
 let drag=null;
-cv.addEventListener("pointerdown",e=>{drag={x:e.clientX,a:view.a,b:view.b,moved:false};cv.setPointerCapture(e.pointerId);});
+let carRaf=0;
+function moveCarrier(e){
+  const r=entryByKey(carDrag.k);if(!r)return;
+  const step=e.shiftKey?5:25;
+  let f=Math.round(fAt(e)/step)*step;f=Math.min(view.b,Math.max(view.a,f));
+  if(f===r.e.f)return;
+  r.e.f=f;r.e.locked=true;
+  if(!carRaf)carRaf=requestAnimationFrame(()=>{carRaf=0;analyzeNow();draw();});
+}
+cv.addEventListener("pointerdown",e=>{
+  const c=nearest(e);
+  if(c&&e.button===0){carDrag={k:c.g.id+":"+c.i,x:e.clientX,moved:false,f0:c.f,l0:c.g.freqs[c.i].locked};cv.setPointerCapture(e.pointerId);return;}
+  drag={x:e.clientX,a:view.a,b:view.b,moved:false};cv.setPointerCapture(e.pointerId);
+});
 cv.addEventListener("pointermove",e=>{
+  cursorF=fAt(e);updFreqBar();
+  if(carDrag){
+    if(!carDrag.moved&&Math.abs(e.clientX-carDrag.x)>3){carDrag.moved=true;cv.classList.add("grabbing");if(selected!==carDrag.k){selected=carDrag.k;document.querySelectorAll("tr.ch").forEach(r=>r.classList.toggle("sel",r.dataset.k===selected));}}
+    if(carDrag.moved)moveCarrier(e);
+  }else if(!drag){cv.classList.toggle("grab",!!nearest(e));}
   if(drag){const dx=e.clientX-drag.x;if(Math.abs(dx)>3)drag.moved=true;if(drag.moved){const r=cv.getBoundingClientRect();const df=-dx/(r.width-PADL-PADR)*(drag.b-drag.a);view={a:drag.a+df,b:drag.b+df};draw();}}
   const r=cv.getBoundingClientRect(),f=fAt(e),c=nearest(e);
   let txt=`<b>${fmt(Math.round(f))} MHz</b>`;
@@ -1181,9 +1217,23 @@ cv.addEventListener("pointermove",e=>{
   let x=e.clientX-r.left+14,y=e.clientY-r.top+14;if(x+tip.offsetWidth>r.width)x=e.clientX-r.left-tip.offsetWidth-10;if(y+tip.offsetHeight>r.height)y=r.height-tip.offsetHeight-4;
   tip.style.left=x+"px";tip.style.top=y+"px";
 });
-cv.addEventListener("pointerup",e=>{if(drag&&!drag.moved){const c=nearest(e);if(c)selectKey(c.g.id+":"+c.i,false),scrollToRow();}drag=null;});
-cv.addEventListener("pointercancel",()=>{drag=null;});
-cv.addEventListener("pointerleave",()=>{tip.hidden=true;});
+function endCarDrag(cancel){
+  const d=carDrag;carDrag=null;cv.classList.remove("grabbing");if(!d)return;
+  const r=entryByKey(d.k);
+  if(d.moved&&r){
+    if(carRaf){cancelAnimationFrame(carRaf);carRaf=0;}
+    if(cancel){r.e.f=d.f0;r.e.locked=d.l0;}
+    else if(r.e.f!==d.f0){save();}
+    analyzeNow();renderTable();draw();
+    if(!cancel&&r.e.f!==d.f0)toast(`${chFull(r.g,r.i)}: ${fmt(d.f0)} → ${fmt(r.e.f)} MHz (bloqueada)`);
+  }else if(!d.moved)selectKey(d.k,false),scrollToRow();
+}
+cv.addEventListener("pointerup",e=>{
+  if(carDrag){endCarDrag(false);return;}
+  if(drag&&!drag.moved){const c=nearest(e);if(c)selectKey(c.g.id+":"+c.i,false),scrollToRow();}drag=null;
+});
+cv.addEventListener("pointercancel",()=>{drag=null;endCarDrag(true);});
+cv.addEventListener("pointerleave",()=>{tip.hidden=true;if(!carDrag){cursorF=null;updFreqBar();}});
 cv.addEventListener("wheel",e=>{e.preventDefault();zoom(fAt(e),e.deltaY>0?1.25:0.8);},{passive:false});
 cv.addEventListener("dblclick",fit);
 function scrollToRow(){if(!selected)return;const tr=document.querySelector(`tr.ch[data-k="${selected}"]`);if(tr)tr.scrollIntoView({block:"nearest"});}
@@ -1750,12 +1800,21 @@ $("#netConn").addEventListener("click",netConnect);
 
 /* ---------- Búsqueda de receptores en la red ---------- */
 let netFound=[];
+async function loadIfaces(){
+  const sel=$("#netIface");if(!sel||!state.net.key)return;
+  try{
+    const j=await diskApi("/interfaces");
+    const keep=sel.value||(state.net.iface||"");
+    sel.innerHTML=`<option value="">Todas las conexiones</option>`+j.interfaces.map(i=>`<option value="${esc(i.ip)}">${esc(i.ip)} · red ${esc(i.network)}${i.link_local?" (IP automática)":""}</option>`).join("");
+    if(j.interfaces.some(i=>i.ip===keep))sel.value=keep;
+  }catch(e){}
+}
 async function netScan(){
   const btn=$("#netScan"),box=$("#netFound");
   if(!state.net.key){box.innerHTML=`<p class="hint s-warn">Falta la clave del puente: abre la app desde http://127.0.0.1:8765 o escríbela arriba.</p>`;return;}
   btn.disabled=true;btn.textContent="Buscando…";box.innerHTML=`<p class="hint">Revisando la red. Tarda unos segundos…</p>`;
   try{
-    const j=await bridgePost("/discover",{ranges:$("#netRange").value.trim()});
+    const j=await bridgePost("/discover",{ranges:$("#netRange").value.trim(),iface:$("#netRange").value.trim()?"":$("#netIface").value});
     netFound=j.found;
     const info=`Revisadas ${j.hosts} direcciones en ${j.ranges.join(", ")||"ninguna red"}.`;
     const notes=j.notes.map(n=>`<p class="hint s-warn">${esc(n)}</p>`).join("");
@@ -1770,6 +1829,8 @@ async function netScan(){
   finally{btn.disabled=false;btn.textContent="Buscar en la red";}
 }
 $("#netScan").addEventListener("click",netScan);
+$("#netIfaceRefresh").addEventListener("click",()=>{loadIfaces();toast("Redes actualizadas.");});
+$("#netIface").addEventListener("change",()=>{state.net.iface=$("#netIface").value;save();});
 $("#netFound").addEventListener("click",async e=>{
   if(e.target.id!=="netAddFound")return;
   const pick=[...document.querySelectorAll("#netFound [data-fi]")].filter(c=>c.checked&&!c.disabled).map(c=>netFound[+c.dataset.fi]);
@@ -1778,7 +1839,7 @@ $("#netFound").addEventListener("click",async e=>{
   save();renderNetDevs();$("#netFound").innerHTML=`<p class="hint s-ok">Añadidos ${pick.length} receptores.</p>`;
   if(net.es)await netPushDevices(true);else await netConnect();
 });
-$("#netToggle").addEventListener("click",()=>{const p=$("#netPanel");p.hidden=!p.hidden;});
+$("#netToggle").addEventListener("click",()=>{const p=$("#netPanel");p.hidden=!p.hidden;if(!p.hidden)loadIfaces();});
 
 /* ---------- Canales de receptor ---------- */
 function rxList(){

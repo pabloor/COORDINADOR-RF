@@ -955,13 +955,26 @@ def probe_ssc(hosts, timeout=1.5):
     return list(found.values())
 
 
-def discover(ranges=""):
+def interface_list():
+    """Redes a las que está conectado el ordenador, para que el usuario elija por cuál buscar."""
+    res = []
+    for i in local_interfaces():
+        res.append({"ip": str(i.ip), "network": str(i.network), "link_local": i.ip.is_link_local,
+                    "hosts": i.network.num_addresses})
+    return res
+
+
+def discover(ranges="", iface=""):
     if not DISCOVER_LOCK.acquire(blocking=False):
         raise ValueError("ya hay una búsqueda en marcha")
     try:
         notes, nets = [], []
         ifaces = local_interfaces()
         own = {str(i.ip) for i in ifaces}
+        if iface.strip():  # solo la conexión elegida (la IP del ordenador en esa red)
+            ifaces = [i for i in ifaces if str(i.ip) == iface.strip()]
+            if not ifaces:
+                raise ValueError(f"la conexión {iface} ya no está disponible: actualiza la lista de redes")
         if ranges.strip():
             for tok in re.split(r"[\s,;]+", ranges.strip()):
                 try:
@@ -1590,6 +1603,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply({"error": str(e)}, 404)
         elif path == "/diagnostics":
             self.reply({"text": diagnostics()})
+        elif path == "/interfaces":
+            self.reply({"interfaces": interface_list()})
         elif path == "/update":
             self.reply(check_update())
         elif path == "/update/status":
@@ -1637,7 +1652,8 @@ class Handler(BaseHTTPRequestHandler):
                 set_devices(body)
                 return self.reply(snapshot())
             if path == "/discover":
-                return self.reply(discover(str((body or {}).get("ranges", "")) if isinstance(body, dict) else ""))
+                b = body if isinstance(body, dict) else {}
+                return self.reply(discover(str(b.get("ranges", "")), str(b.get("iface", ""))))
             if path == "/analyzer":
                 analyzer_cmd(body if isinstance(body, dict) else {})
                 return self.reply({"ok": True})
