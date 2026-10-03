@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.7"
+VERSION = "1.8"
 try:
     import serial  # pyserial: solo hace falta para el analizador
     from serial.tools import list_ports
