@@ -6,6 +6,11 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.10**
+- **Shure Axient Digital (AD4D/AD4Q):** el monitor ya interpreta sus medidores: RF por antena, audio RMS y pico, calidad 0-5, batería y emisor.
+  Los niveles usan el desfase habitual (RSSI y audio − 120); contrástalos con la pantalla del equipo y avisa si difieren.
+- El diagnóstico recoge más ejemplos de lo que responde cada receptor.
+
 **Novedades de la 1.9**
 - **Receptores Shure (probado con Axient Digital en mente):** los medidores (RF, audio) se piden también canal a canal y las órdenes iniciales se envían por separado.
   Si un receptor no manda niveles, el monitor lo avisa, y «Diagnóstico» recoge lo que responde el equipo.
