@@ -612,9 +612,12 @@ def t_shure_axient(B):
         pg.evaluate("()=>{state.groups[0].freqs[0].f=530000;state.groups[0].freqs[0].locked=true;save();analyzeNow()}")
         pg.click('[data-tab="mon"]')
         pg.wait_for_selector(".tile .rx .leds", timeout=8000)
-        m = pg.evaluate("()=>{const rx=document.querySelector('.tile .rx');const L=[...rx.querySelectorAll('.leds')];return {n:L.map(l=>l.children.length),on:L.map(l=>l.querySelectorAll('i.on').length),pk:rx.querySelectorAll('.leds i.pk').length,bar:!!rx.querySelector('.meter'),txt:rx.innerText}}")
+        m = pg.evaluate("""()=>{const rx=document.querySelector('.tile .rx');const L=[...rx.querySelectorAll('.leds')];
+            const col=l=>{const i=l.querySelector('i.on');return i?getComputedStyle(i).backgroundColor:null};
+            return {n:L.map(l=>l.children.length),on:L.map(l=>l.querySelectorAll('i.on').length),cols:L.map(col),bar:!!rx.querySelector('.meter'),txt:rx.innerText}}""")
         check("el monitor muestra RF en 10 puntos, calidad en 5 y audio en 7 LED (sin barra continua)", m["n"] == [10, 5, 7] and not m["bar"], m)
-        check("los puntos reflejan los valores: RF -76 → 3, calidad 3/5, audio -44 → 1 LED y el pico (-37) como punto hueco", m["on"] == [3, 3, 1] and m["pk"] == 1, m)
+        check("los puntos reflejan los valores: RF -76 → 3, calidad 3/5, audio por el pico (-37) → 2 LED", m["on"] == [3, 3, 2], m)
+        check("colores: RF naranja, calidad morado, audio verde (los tres distintos)", len(set(m["cols"])) == 3 and None not in m["cols"], m["cols"])
         check("el texto ya no mezcla audio y pico entre paréntesis", "dBFS" not in m["txt"] and "Antena A -76 dBm" in m["txt"], m["txt"])
         check("batería y emisor con los nombres de Axient (255 = desconocido)", c1["bars"] == 4 and c1["batt"] == 80 and c1["tx"] == "AD2" and c2["bars"] is None and c2["batt"] is None and c2["battMin"] is None, (c1, c2))
         ctx.close()
