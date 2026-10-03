@@ -1308,9 +1308,10 @@ def can_install(asset):
 
 
 def check_update():
-    """Consulta la última release publicada (repositorio público). Se guarda 6 horas; si falla, no molesta."""
-    if _UPD["data"] is not None and now() - _UPD["t"] < 6 * 3600:
-        return _UPD["data"]
+    """Consulta la última release publicada (repositorio público). Se guarda 15 minutos (2 si falló); si falla, no molesta."""
+    d = _UPD["data"]
+    if d is not None and now() - _UPD["t"] < (120 if d.get("error") else 15 * 60):
+        return d
     try:
         api = os.environ.get(UPDATE_TEST) or f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
         with _urlopen(urllib.request.Request(api, headers=UA), 6) as r:

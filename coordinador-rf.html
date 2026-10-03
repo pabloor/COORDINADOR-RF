@@ -2299,14 +2299,18 @@ function showUpdBar(){
   $("#updInstall").hidden=!j.canInstall;$("#updGo").textContent=j.canInstall?"Ver novedades":"Ver novedades y descargar";
   $("#updBar").hidden=false;
 }
+/* Se comprueba al conectar, al volver a la ventana y cada 15 min (el puente guarda el resultado 15 min, así que no gasta de más). */
 async function checkUpdate(){
-  if(updChecked||!diskReady())return;updChecked=true;
+  if(updBusy||!diskReady())return;updChecked=true;
   try{
     const j=await diskApi("/update");
     if(!j.newer||localStorage.getItem("coordinador-rf.aviso")===j.latest)return;
+    if(updInfo&&updInfo.latest===j.latest&&!$("#updBar").hidden)return;
     updInfo=j;showUpdBar();
   }catch(e){}
 }
+setInterval(checkUpdate,15*60*1000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkUpdate();});
 $("#updGo").onclick=async()=>{
   if(!updInfo)return;
   try{await diskApi("/open",{url:updInfo.url});}catch(e){window.open(updInfo.url,"_blank");}
