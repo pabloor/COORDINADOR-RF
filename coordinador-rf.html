@@ -1777,6 +1777,13 @@ function renderTiles(force){
 }
 /* El registro de eventos ya no tiene panel: se guarda en memoria y se exporta o se borra desde el menú Monitor. */
 function clearLog(){mon.log=[];toast("Registro de eventos borrado.");}
+$("#tiles").addEventListener("click",e=>{
+  const b=e.target.closest("[data-exp]");if(!b)return;
+  const k=b.dataset.exp,nx={auto:"on",on:"off",off:"auto"}[state.monitor.expect[k]||"auto"];
+  if(nx==="auto")delete state.monitor.expect[k];else state.monitor.expect[k]=nx;
+  b.dataset.v=nx;b.textContent=EXP_TXT[nx];save();
+  mon.st.set(k,chStatus(k,mon.lv.get(k)??null));renderTiles(false);
+});
 
 /* ======================================================================
    TELEMETRÍA DE RECEPTORES (a través de puente-rf.py)
