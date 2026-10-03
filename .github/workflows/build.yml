@@ -33,6 +33,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt
+      - name: Comprobar el menú Proyecto con el pywebview real
+        run: python tests/menu_pywebview.py
       - name: Compilar Coordinador RF.app
         env:
           MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}

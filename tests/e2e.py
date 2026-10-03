@@ -199,7 +199,7 @@ def t_alertas_informe(B):
         posts = []
         pg.on("request", lambda r: posts.append(r.url.split("?")[0].rsplit("/", 1)[-1]) if r.method == "POST" else None)
         pg.evaluate("()=>{window.__b=0;beep=()=>{window.__b++}}")
-        pg.click('[data-tab="mon"]')
+        pg.click('[data-tab="live"]')
         pg.evaluate("()=>{logEvent('x','bad',true)}")
         check("con los avisos apagados no suena ni notifica", pg.evaluate("()=>window.__b")==0 and "notify" not in posts)
         pg.check("#alSound"); pg.check("#alNotify")
@@ -487,8 +487,15 @@ def t_grafica_red(B):
         check("las portadoras de origen se resaltan en la gráfica", pg.evaluate("()=>hoverSrc.size")>=2)
         pg.mouse.move(X(prod), geo["t"] + 60)
         check("fuera de la franja de productos no hay información de IMD", "intermodulación" not in pg.inner_text("#tip") and pg.evaluate("()=>hoverSrc.size")==0)
+        # dónde está cada control: avisos y registro en Espectro en vivo, receptores en Coordinación, nada de eso en el Monitor
+        where = pg.evaluate("""()=>{const v=id=>{const e=document.getElementById(id);const s=e&&e.closest('#viewCoord, section.view');return s?s.id:null};
+            return {alSound:v('alSound'),alNotify:v('alNotify'),alTest:v('alTest'),logExport:v('logExport'),monAllOn:v('monAllOn'),monAllAuto:v('monAllAuto'),
+                    netToggle:v('netToggle'),netPanel:v('netPanel'),monBtns:document.querySelectorAll('#viewMon .bar button, #viewMon .bar input').length}}""")
+        check("avisos, registro y «Todos encendidos» están en Espectro en vivo", all(where[k] == "viewLive" for k in ("alSound", "alNotify", "alTest", "logExport", "monAllOn", "monAllAuto")), where)
+        check("el botón y el panel de Receptores están en Coordinación", where["netToggle"] == "viewCoord" and where["netPanel"] == "viewCoord", where)
+        check("la barra del Monitor ya no tiene botones ni campos", where["monBtns"] == 0, where)
         # selector de red
-        pg.click('[data-tab="mon"]')
+        pg.click('[data-tab="coord"]')
         pg.click("#netToggle")
         pg.wait_for_timeout(600)
         n = pg.evaluate("()=>document.querySelectorAll('#netIface option').length")
@@ -618,13 +625,97 @@ def t_shure_axient(B):
         check("el monitor muestra RF en 10 puntos, calidad en 5 y audio en 7 LED (sin barra continua)", m["n"] == [10, 5, 7] and not m["bar"], m)
         check("los puntos reflejan los valores: RF -76 → 3, calidad 3/5, audio por el pico (-37) → 2 LED", m["on"] == [3, 3, 2], m)
         check("colores: RF naranja, calidad morado, audio verde (los tres distintos)", len(set(m["cols"])) == 3 and None not in m["cols"], m["cols"])
+        pg.evaluate("()=>{state.groups[0].freqs[1].f=540000;state.groups[0].freqs[1].locked=true;save();analyzeNow();renderTiles(true)}")
+        pg.wait_for_function("()=>document.querySelectorAll('.tile .exp').length>=2")
+        pg.wait_for_function("()=>document.querySelector('.tile .exp').dataset.v==='auto-on'", timeout=8000)
+        e1 = pg.evaluate("()=>{const b=document.querySelectorAll('.tile .exp');return [b[0].textContent,b[0].dataset.v,b[1].textContent,b[1].dataset.v]}")
+        check("con un emisor sincronizado el botón pasa solo a «Tx encendido»", e1[:2] == ["Tx encendido", "auto-on"], e1)
+        check("sin emisor sincronizado (batería y modelo desconocidos) sigue «Tx sin indicar»", e1[2:] == ["Tx sin indicar", "auto"], e1)
+        pg.click(".tile .exp >> nth=0")
+        e2 = pg.evaluate("()=>{const b=document.querySelector('.tile .exp');return [b.textContent,b.dataset.v,state.monitor.expect[b.dataset.exp]]}")
+        check("al pulsarlo manualmente se guarda «Tx encendido» (y luego apagado, y vuelta al automático)", e2[1] == "on" and e2[2] == "on", e2)
+        pg.click(".tile .exp >> nth=0"); pg.click(".tile .exp >> nth=0")
+        check("tras el ciclo vuelve al automático y se detecta otra vez", pg.evaluate("()=>document.querySelector('.tile .exp').dataset.v") == "auto-on")
         check("el texto ya no mezcla audio y pico entre paréntesis", "dBFS" not in m["txt"] and "Antena A -76 dBm" in m["txt"], m["txt"])
         check("batería y emisor con los nombres de Axient (255 = desconocido)", c1["bars"] == 4 and c1["batt"] == 80 and c1["tx"] == "AD2" and c2["bars"] is None and c2["batt"] is None and c2["battMin"] is None, (c1, c2))
         ctx.close()
     stop.set()
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_menu_proyecto(B):
+    print("Menú «Proyecto» de la ventana de Mac (interfaz y menú nativo)")
+    with bridge() as br:
+        # Navegador normal: los controles de proyecto siguen en la página
+        ctx, pg = B.page(br["url"])
+        vis = lambda sel: pg.evaluate("(s)=>{const e=document.querySelector(s);return !!e&&getComputedStyle(e).display!=='none'}", sel)
+        check("en un navegador normal siguen el selector y la sección Proyecto", vis("#projSel") and vis("details.projbox"))
+        ctx.close()
+        # Ventana de la app (?ventana=1): se ocultan y se maneja todo desde el menú
+        ctx, pg = B.page(br["url"] + "/?ventana=1")
+        check("en la ventana de la app se ocultan (están en el menú nativo)", not vis("#projSel") and not vis("details.projbox"))
+        pg.evaluate("()=>{menuProyecto('nuevo')}")
+        pg.wait_for_selector("#nameModal:not([hidden])")
+        pg.fill("#nmText", "Boda García"); pg.press("#nmText", "Enter"); pg.wait_for_timeout(400)
+        check("menú → Nuevo proyecto crea y abre el proyecto", pg.evaluate("()=>curProject().name==='Boda García'&&projIdx.list.length===2"))
+        pg.evaluate("()=>{menuProyecto('renombrar')}")
+        pg.wait_for_selector("#nameModal:not([hidden])")
+        pg.fill("#nmText", "Boda Pérez"); pg.press("#nmText", "Enter"); pg.wait_for_timeout(300)
+        check("menú → Renombrar", pg.evaluate("()=>curProject().name")=="Boda Pérez")
+        pg.evaluate("()=>{menuProyecto('cambiar')}")
+        pg.wait_for_selector("#pickModal:not([hidden])")
+        names = pg.eval_on_selector_all("#pkList button", "els=>els.map(e=>e.textContent+(e.getAttribute('aria-current')?'*':''))")
+        check("menú → Cambiar de proyecto lista los proyectos y marca el actual", sorted(names) == ["Boda Pérez*", "Proyecto 1"], names)
+        pg.click('#pkList button:has-text("Proyecto 1")')
+        check("elegir uno cambia de proyecto y cierra la lista", pg.evaluate("()=>curProject().name==='Proyecto 1'") and not pg.is_visible("#pickModal"))
+        csv = pg.evaluate("()=>menuTexto('csv')")
+        proj = pg.evaluate("()=>menuTexto('proyecto')")
+        import json as _j
+        check("el menú obtiene el CSV y el proyecto para copiarlos (sin la clave del puente)", csv.startswith('"Grupo"') and _j.loads(proj)["net"]["key"] == "", csv[:40])
+        ok = pg.evaluate("(t)=>menuCargar('Gira otoño.json',t)", _j.dumps({"groups": [{"name": "Importado", "qty": 1, "min": 470000, "max": 520000, "step": 25, "preset": "analog", "freqs": [{"f": 480000, "locked": True}]}]}))
+        check("menú → Cargar archivo crea un proyecto con el nombre del archivo", ok and pg.evaluate("()=>curProject().name==='Gira otoño'&&state.groups[0].name==='Importado'"))
+        check("un archivo que no es un proyecto se rechaza con un aviso", pg.evaluate("()=>menuCargar('x.json','no es json')") is False and "no es un proyecto" in pg.inner_text("#toast"))
+        pg.evaluate("()=>{menuProyecto('borrar')}")
+        pg.wait_for_timeout(500)
+        check("menú → Borrar elimina el proyecto actual", pg.evaluate("()=>projIdx.list.every(p=>p.name!=='Gira otoño')"))
+        check("una acción desconocida no hace nada", pg.evaluate("()=>menuProyecto('inexistente')") is False)
+        # Red de seguridad: sin conexión con la ventana nativa, a los 6 s vuelven los controles de la página
+        pg.wait_for_timeout(6500)
+        check("si la ventana no conecta con su menú, vuelven los controles de la página", vis("#projSel"))
+        ctx.close()
+    # Menú nativo (Python), con un pywebview de mentira
+    import importlib.util, types
+    spec = importlib.util.spec_from_file_location("puente_rf", os.path.join(ROOT, "puente-rf.py"))
+    pr = importlib.util.module_from_spec(spec); spec.loader.exec_module(pr)
+    calls, copied = [], []
+    class W:
+        def evaluate_js(self, code):
+            calls.append(code)
+            return "a;b" if "menuTexto" in code else None
+        def create_file_dialog(self, *a, **k):
+            return [dlg_file[0]]
+    wv = types.SimpleNamespace(windows=[W()], FileDialog=types.SimpleNamespace(OPEN=1))
+    class Menu:
+        def __init__(self, title, items): self.title, self.items = title, items
+    class Action:
+        def __init__(self, title, function): self.title, self.function = title, function
+    class Sep: pass
+    mm = types.SimpleNamespace(Menu=Menu, MenuAction=Action, MenuSeparator=Sep)
+    pr.copy_clipboard = lambda t: copied.append(t) or True
+    m = pr.project_menu(wv, mm)
+    acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
+    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 11 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    acts["Nuevo proyecto…"]()
+    check("cada opción llama a su función de la página", calls[-1] == 'menuProyecto("nuevo")', calls)
+    acts["Copiar lista de frecuencias (CSV)"]()
+    check("copiar usa el portapapeles del sistema y avisa", copied == ["a;b"] and "toast(" in calls[-1] and "copiada" in calls[-1].lower(), (copied, calls[-2:]))
+    import tempfile as _t
+    dlg_file = [os.path.join(_t.mkdtemp(), "mi proyecto.json")]
+    open(dlg_file[0], "w", encoding="utf-8").write('{"groups":[]}')
+    acts["Cargar archivo como proyecto nuevo…"]()
+    check("cargar lee el archivo elegido y se lo pasa a la página", calls[-1].startswith('menuCargar("mi proyecto.json",') and '{\\"groups\\"' in calls[-1].replace('\\"', '\\\\"') or "groups" in calls[-1], calls[-1])
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

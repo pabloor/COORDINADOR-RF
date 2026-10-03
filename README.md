@@ -35,10 +35,13 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista.
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (botón *Informe*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).
-- **Varios proyectos** con nombre (selector de la cabecera). Se guardan en la app y, con el puente conectado, como archivos en
+- **Varios proyectos** con nombre. En la app de Mac todo lo de proyectos está en la barra de menús, en **Proyecto** (cambiar, nuevo, duplicar,
+  renombrar, borrar, vaciar, abrir la carpeta, cargar archivo, pegar, copiar lista CSV y copiar proyecto) y el nombre del proyecto actual va en
+  el título de la ventana; en el navegador siguen el selector de la cabecera y la sección Proyecto del panel. Se guardan en la app y, con el puente conectado, como archivos en
   `Documentos/Coordinador RF/Proyectos`, de donde se recuperan si se pierden los datos de la app. Informes y registros van a
   `Documentos/Coordinador RF/Informes` y `Registros`.
-- **Monitor de canales:** estado de cada canal con los niveles del analizador y los datos de los receptores en red, con aviso
+- **Monitor de canales:** el botón del emisor pasa solo a «Tx encendido» cuando el receptor tiene un emisor sincronizado. Los controles de
+  avisos, umbral, «Todos encendidos» y el registro están en *Espectro en vivo*, y el botón *Receptores* en *Coordinación*. Estado de cada canal con los niveles del analizador y los datos de los receptores en red, con aviso
   sonoro y notificación del sistema ante alarmas, y registro exportable a CSV.
 - **Receptores de red (Shure TCP 2202, Sennheiser SSC UDP 45):** el selector *Red por la que buscar* limita la búsqueda a una
   conexión del ordenador (cable, Wi-Fi…) en vez de revisarlas todas. *Importar a la coordinación* crea un grupo con sus frecuencias;

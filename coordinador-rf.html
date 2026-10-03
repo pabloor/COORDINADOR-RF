@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Coordinador RF</title>
+<script>try{if(/[?&]ventana=1/.test(location.search))document.documentElement.dataset.nativo="1";}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -126,6 +127,9 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 .mbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:5px;font-size:14px;z-index:9}
 .projsel{max-width:220px;font-weight:600}
+html[data-nativo] #projSel,html[data-nativo] details.projbox{display:none}
+.pklist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin:10px 0}
+.pklist button{text-align:left}.pklist button[aria-current=true]{border-color:var(--accent);font-weight:600}
 .updbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:7px 18px;background:color-mix(in srgb,var(--accent) 14%,var(--panel));border-bottom:1px solid var(--line);font-size:14px}
 .updbar span{margin-right:auto}
 .pbtns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
@@ -162,7 +166,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 .meter i{display:block;height:100%;width:0;background:var(--scan)}
 .spark{width:100%;height:30px;display:block}
 .exp{border:1px solid var(--line);background:var(--bg);border-radius:10px;font-size:12px;padding:1px 8px;cursor:pointer;white-space:nowrap}
-.exp[data-v=on]{border-color:var(--ok);color:var(--ok)}
+.exp[data-v=on],.exp[data-v=auto-on]{border-color:var(--ok);color:var(--ok)}
 .exp[data-v=off]{border-color:var(--muted)}
 .s-ok{color:var(--ok)}.s-warn{color:var(--im5)}.s-bad{color:var(--im3)}.s-idle{color:var(--muted)}
 .netp{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 14px}
@@ -272,7 +276,7 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
       <p class="hint">El margen se usa para respetar canales de TV, exclusiones y el escaneo.</p>
     </div>
   </details>
-  <details>
+  <details class="projbox">
     <summary>Proyecto</summary>
     <div class="sec">
       <p class="hint" id="projInfo"></p>
@@ -323,29 +327,9 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
       <button class="btn small" id="reportBtn" title="Abre una hoja con la coordinación lista para imprimir o guardar como PDF">Informe</button>
       <button class="btn small" id="undoBtn" disabled title="Deshacer (⌘Z / Ctrl+Z)">Deshacer</button>
       <button class="btn small" id="redoBtn" disabled title="Rehacer (⇧⌘Z / Ctrl+Y)">Rehacer</button>
+      <button class="btn small" id="netToggle" title="Conectar con el puente, buscar y añadir receptores Shure y Sennheiser">Receptores</button>
       <button class="btn small primary" id="sendAll" title="Programa en los receptores de red las frecuencias de los canales enlazados">Enviar a receptores</button>
     </div>
-    <table>
-      <thead><tr><th>Canal</th><th>Nombre</th><th>Frecuencia (MHz)</th><th><span class="sr">Bloqueo</span></th><th>Estado</th><th>Receptor</th></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
-</main>
-</div>
-
-<section class="view" id="viewMon" hidden>
-  <div class="bar">
-    <div class="grow"><div id="monConn" class="hint" style="margin:0 0 6px"></div></div>
-    <label class="f">Umbral (dBm)<input type="number" step="1" id="monThr"></label>
-    <button class="btn small" id="monAllOn">Todos encendidos</button>
-    <button class="btn small" id="monAllAuto">Sin indicar</button>
-    <label class="chk" title="Suena cuando un canal pierde la portadora, aparece una señal no esperada o un receptor da una alarma"><input type="checkbox" id="alSound">Aviso sonoro</label>
-    <label class="chk" title="Notificación del sistema ante las mismas alarmas"><input type="checkbox" id="alNotify">Notificación</label>
-    <button class="btn small" id="alTest">Probar avisos</button>
-    <button class="btn small" id="logExport" title="Guarda el registro de eventos como archivo CSV">Exportar registro</button>
-    <button class="btn small" id="monGoLive">Conectar analizador</button>
-    <button class="btn small" id="netToggle">Receptores</button>
-  </div>
   <div id="netPanel" class="netp" hidden>
     <div class="netrow">
       <label class="f">Dirección del puente<input type="text" id="netUrl" spellcheck="false"></label>
@@ -364,6 +348,18 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
       <label class="f" style="min-width:260px">Rango a revisar (opcional)<input type="text" id="netRange" spellcheck="false" placeholder="Automático, o por ejemplo 192.168.10.0/24"></label>
     </div>
     <div id="netFound"></div>
+  </div>
+    <table>
+      <thead><tr><th>Canal</th><th>Nombre</th><th>Frecuencia (MHz)</th><th><span class="sr">Bloqueo</span></th><th>Estado</th><th>Receptor</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+</div>
+
+<section class="view" id="viewMon" hidden>
+  <div class="bar">
+    <div class="grow"><div id="monConn" class="hint" style="margin:0"></div></div>
   </div>
   <div class="mon">
     <div class="tiles" id="tiles"></div>
@@ -401,6 +397,12 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <label class="f" id="lvCapW">Capturar durante<select id="lvCapDur"><option value="0">Solo el barrido actual</option><option value="10">10 s (máximo)</option><option value="30">30 s (máximo)</option><option value="60">1 min (máximo)</option><option value="120">2 min (máximo)</option></select></label>
     <button class="btn small primary" id="lvSave" title="Guarda lo que ve el analizador como escaneo del sitio: la coordinación evitará esas frecuencias">Capturar como escaneo</button>
     <button class="btn small" id="lvDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
+    <button class="btn small" id="monAllOn" title="Marca todos los canales del monitor como «Tx encendido»">Todos encendidos</button>
+    <button class="btn small" id="monAllAuto" title="Quita lo marcado: el monitor detecta solo si hay un emisor sincronizado">Sin indicar</button>
+    <label class="chk" title="Suena cuando un canal pierde la portadora, aparece una señal no esperada o un receptor da una alarma"><input type="checkbox" id="alSound">Aviso sonoro</label>
+    <label class="chk" title="Notificación del sistema ante las mismas alarmas"><input type="checkbox" id="alNotify">Notificación</label>
+    <button class="btn small" id="alTest">Probar avisos</button>
+    <button class="btn small" id="logExport" title="Guarda el registro de eventos como archivo CSV">Exportar registro</button>
   </div>
   <div class="lstatus" id="lvStatus" aria-live="polite"></div>
   <div class="live-wrap">
@@ -421,6 +423,13 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
     <h2 id="nmT">Nombre</h2>
     <input type="text" id="nmText" maxlength="80" style="width:100%" aria-label="Nombre">
     <div class="mbtns"><button class="btn" id="nmNo">Cancelar</button><button class="btn primary" id="nmYes">Aceptar</button></div>
+  </div>
+</div>
+<div class="modal" id="pickModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="pkT">
+    <h2 id="pkT">Cambiar de proyecto</h2>
+    <div class="pklist" id="pkList"></div>
+    <div class="mbtns"><button class="btn" id="pkNo">Cerrar</button></div>
   </div>
 </div>
 <div class="modal" id="diagModal" hidden>
@@ -1074,11 +1083,14 @@ async function copyText(t){
     let ok=false;try{ok=document.execCommand("copy");}catch(_){}ta.remove();return ok;
   }
 }
-$("#copyCsv").onclick=async()=>{
+function csvText(){
   const map=new Map();for(const c of analysis.C)map.set(c.g.id+":"+c.i,c);
   const rows=[["Grupo","Canal","Nombre","Frecuencia (MHz)","Bloqueada","Estado"]];
   for(const g of state.groups)g.freqs.forEach((e,i)=>{const c=map.get(g.id+":"+i);rows.push([g.name,i+1,e.name||"",e.f!=null?fmt(e.f):"",e.locked?"Sí":"No",e.f==null?"Sin asignar":c&&c.issues.length?c.issues.join(" | "):"Compatible"]);});
-  const ok=await copyText(rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(";")).join("\n"));
+  return rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(";")).join("\n");
+}
+$("#copyCsv").onclick=async()=>{
+  const ok=await copyText(csvText());
   toast(ok?"Lista copiada. Pégala en una hoja de cálculo.":"No se ha podido copiar al portapapeles.");
 };
 $("#copyJson").onclick=async()=>{const ok=await copyText(JSON.stringify(exportState()));toast(ok?"Proyecto copiado. Guárdalo en un archivo .json para cargarlo después.":"No se ha podido copiar al portapapeles.");};
@@ -1495,7 +1507,7 @@ async function bridgePost(path,body){
 }
 class BridgeSource{
   async start(emit){
-    if(!state.net.key)throw new Error("Falta la clave del puente: abre la app desde http://127.0.0.1:8765 o escríbela en Monitor de canales, Receptores.");
+    if(!state.net.key)throw new Error("Falta la clave del puente: abre la app desde http://127.0.0.1:8765 o escríbela en Coordinación, Receptores.");
     const ad=state.live.source==="ad600";
     if(!ad&&!state.live.bport)throw new Error("Elige el puerto del analizador (pulsa Buscar puertos).");
     if(ad&&(state.live.start<174000||state.live.stop>2000000))throw new Error("El AD600 cubre de 174 a 2000 MHz: ajusta el rango.");
@@ -1557,7 +1569,7 @@ function renderLiveStatus(){
 function syncLiveControls(){
   const L=state.live;
   $("#lvSrc").value=L.source;$("#lvA").value=fmt(L.start);$("#lvB").value=fmt(L.stop);$("#lvPts").value=L.points;
-  $("#lvRfePts").value=L.rfePts;$("#lvTiny").value=L.tiny;$("#lvThr").value=L.thr;$("#monThr").value=L.thr;
+  $("#lvRfePts").value=L.rfePts;$("#lvTiny").value=L.tiny;$("#lvThr").value=L.thr;
   $("#lvMax").checked=L.maxOn;$("#lvAvg").checked=L.avgOn;
   $("#lvPtsW").hidden=L.source==="rfe";$("#lvRfePtsW").hidden=L.source!=="rfe";$("#lvTinyW").hidden=L.source!=="tinysa";
   const ad=L.source==="ad600";
@@ -1584,9 +1596,8 @@ $("#lvFit").addEventListener("click",()=>{const [a,b]=bounds();state.live.start=
 $("#lvPts").addEventListener("change",e=>{state.live.points=Math.max(16,Math.min(3000,parseInt(e.target.value)||450));e.target.value=state.live.points;save();});
 $("#lvRfePts").addEventListener("change",e=>{state.live.rfePts=e.target.value;save();if(live.src)toast("Se aplicará al volver a conectar el RF Explorer.");});
 $("#lvTiny").addEventListener("change",e=>{state.live.tiny=e.target.value;save();if(live.src&&live.src.scale&&e.target.value!=="auto")live.src.scale=+e.target.value;});
-function setThr(v){state.live.thr=Math.max(-130,Math.min(0,Number.isFinite(v)?v:-80));$("#lvThr").value=state.live.thr;$("#monThr").value=state.live.thr;save();drawLive();}
+function setThr(v){state.live.thr=Math.max(-130,Math.min(0,Number.isFinite(v)?v:-80));$("#lvThr").value=state.live.thr;save();drawLive();}
 $("#lvThr").addEventListener("change",e=>setThr(parseFloat(e.target.value)));
-$("#monThr").addEventListener("change",e=>setThr(parseFloat(e.target.value)));
 $("#lvMax").addEventListener("change",e=>{state.live.maxOn=e.target.checked;save();drawLive();});
 $("#lvAvg").addEventListener("change",e=>{state.live.avgOn=e.target.checked;save();drawLive();});
 $("#lvReset").addEventListener("click",()=>{if(live.l)live.max=Float32Array.from(live.l);drawLive();});
@@ -1706,6 +1717,8 @@ new ResizeObserver(()=>{drawLive();if(tab==="live")clearWater();}).observe(lcv);
 /* ======================================================================
    MONITOR DE CANALES
    ====================================================================== */
+/* El receptor tiene un emisor sincronizado (modelo conocido o batería leída): «Tx encendido» sin tener que marcarlo. */
+function txSeen(ch){const r=net.snap&&rxFor(ch.f);if(!r)return false;const c=r.c;return !!c.tx||battPct(c)!=null;}
 function monChannels(){const out=[];for(const g of state.groups)g.freqs.forEach((e,i)=>{if(e.f!=null)out.push({key:g.id+":"+i,g,i,f:e.f});});return out;}
 const mon={lv:new Map(),st:new Map(),hist:new Map(),log:[],lastTick:0,lastHist:0};
 const EXP_TXT={auto:"Tx sin indicar",on:"Tx encendido",off:"Tx apagado"};
@@ -1729,8 +1742,7 @@ function monitorTick(now){
   if(tab==="mon"){renderTiles(false);renderSide();}
 }
 function renderMonConn(){
-  $("#monConn").textContent=live.src?`Analizador conectado. ${live.info}`:"Sin analizador conectado: conéctalo en Espectro en vivo (o usa el simulador) para ver los niveles.";
-  $("#monGoLive").hidden=!!live.src;
+  $("#monConn").textContent=live.src?`Analizador conectado. ${live.info}`:"Sin analizador conectado: conéctalo en Espectro en vivo (o usa el simulador) para ver los niveles. Allí están también el umbral, los avisos y el registro.";
 }
 let monSig="";
 function renderTiles(force){
@@ -1751,6 +1763,8 @@ function renderTiles(force){
     el.querySelector(".lv").textContent=lv==null?"—":`${lv.toFixed(1)} dBm`;
     const st=el.querySelector(".st");st.textContent=s.t;st.className="st s-"+s.c;
     const cc=ch.find(x=>x.key===k),rb=el.querySelector(".rx");
+    const eb=el.querySelector(".exp"),exv=state.monitor.expect[k]||"auto",ev=exv==="auto"&&cc&&txSeen(cc)?"auto-on":exv;
+    if(eb&&eb.dataset.v!==ev){eb.dataset.v=ev;eb.textContent=ev==="auto-on"?EXP_TXT.on:EXP_TXT[ev];eb.title=ev==="auto-on"?"Detectado por el receptor: tiene un emisor sincronizado":"";}
     if(rb&&cc){const h=rxBlock(cc);if(rb.dataset.h!==h){rb.innerHTML=h;rb.dataset.h=h;}}
     el.classList.toggle("alarm",!!s.alarm||(!!cc&&rxBad(cc)));
     el.querySelector(".meter i").style.width=lv==null?"0":`${Math.max(0,Math.min(100,(lv+110)/90*100))}%`;
@@ -1774,7 +1788,6 @@ $("#tiles").addEventListener("click",e=>{
 });
 $("#monAllOn").addEventListener("click",()=>{for(const c of monChannels())state.monitor.expect[c.key]="on";save();renderTiles(true);});
 $("#monAllAuto").addEventListener("click",()=>{state.monitor.expect={};save();renderTiles(true);});
-$("#monGoLive").addEventListener("click",()=>setTab("live"));
 $("#logClear").addEventListener("click",()=>{mon.log=[];renderSide();});
 
 /* ======================================================================
@@ -1945,7 +1958,7 @@ function rxBlock(ch){
 function rxBad(ch){const r=net.snap&&rxFor(ch.f);return !!r&&rxAlerts(r,state.monitor.expect[ch.key]||"auto").some(a=>a.bad);}
 function renderRxList(force){
   const el=$("#rxList");
-  if(!net.snap){el.innerHTML=`<li class="s-idle">Sin puente conectado. Configúralo en el botón Receptores.</li>`;net.rxSig="";return;}
+  if(!net.snap){el.innerHTML=`<li class="s-idle">Sin puente conectado. Configúralo en Coordinación, botón Receptores.</li>`;net.rxSig="";return;}
   const chans=monChannels(),rows=rxList(),coord=new Set(chans.map(c=>c.f));
   const sig=rows.map(r=>r.dev.id+r.ch+r.c.freq+r.c.name+r.dev.online).join("|")+"#"+[...coord].join(",");
   if(!force&&sig===net.rxSig)return;net.rxSig=sig;
@@ -2424,7 +2437,7 @@ function renderProjInfo(){
 function renderProjects(){
   const sel=$("#projSel");if(!sel)return;
   sel.innerHTML=projIdx.list.map(p=>`<option value="${esc(p.id)}"${p.id===projIdx.cur?" selected":""}>${esc(p.name)}</option>`).join("");
-  renderProjInfo();
+  renderProjInfo();nativeTitle();
 }
 function askName(title,value){
   return new Promise(res=>{
@@ -2481,6 +2494,29 @@ function importProject(s,name){
   const st=normalize(s);st.net.key="";const id=addProject(name,st);switchProject(id);
 }
 $("#projSel").addEventListener("change",e=>switchProject(e.target.value));
+/* ---------- Menú «Proyecto» de la barra de menús del Mac ----------
+   En la ventana de la app (?ventana=1) el selector y la sección Proyecto se ocultan y todo se hace desde el menú nativo,
+   que llama a estas funciones. En un navegador normal sigue todo en la propia página. */
+function projPick(){
+  const m=$("#pickModal"),L=$("#pkList");
+  L.innerHTML=projIdx.list.slice().sort((a,b)=>b.t-a.t).map(p=>`<button class="btn" data-id="${esc(p.id)}"${p.id===projIdx.cur?' aria-current="true"':""}>${esc(p.name)}</button>`).join("");
+  m.hidden=false;const first=L.querySelector("button");if(first)first.focus();
+}
+$("#pkList").addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(!b)return;$("#pickModal").hidden=true;switchProject(b.dataset.id);});
+$("#pkNo").onclick=()=>{$("#pickModal").hidden=true;};
+$("#pickModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#pickModal").hidden=true;});
+const MENU_ACC={cambiar:()=>projPick(),nuevo:()=>projNew(),duplicar:()=>projDup(),renombrar:()=>projRen(),borrar:()=>projDel(),
+  vaciar:()=>$("#reset").click(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
+function menuProyecto(a){const f=MENU_ACC[a];if(f){f();return true;}return false;}
+function menuTexto(kind){return kind==="csv"?csvText():kind==="proyecto"?JSON.stringify(exportState()):"";}
+function menuCargar(name,text){
+  try{const s=JSON.parse(text);if(!s||!Array.isArray(s.groups))throw 0;importProject(s,String(name||"").replace(/\.[^.]+$/,"")||"Proyecto importado");toast("Proyecto cargado como proyecto nuevo.");return true;}
+  catch(e){toast("El archivo no es un proyecto válido.");return false;}
+}
+function nativeTitle(){try{const p=curProject();if(document.documentElement.dataset.nativo&&window.pywebview&&pywebview.api&&pywebview.api.titulo)pywebview.api.titulo(p?p.name:"");}catch(e){}}
+window.addEventListener("pywebviewready",nativeTitle);
+/* Red de seguridad: si la ventana no llega a conectar con su menú, se vuelven a mostrar los controles de la página. */
+if(document.documentElement.dataset.nativo)setTimeout(()=>{if(!window.pywebview)delete document.documentElement.dataset.nativo;},6000);
 $("#projNew").onclick=projNew;$("#projDup").onclick=projDup;$("#projRen").onclick=projRen;$("#projDel").onclick=projDel;
 $("#projDir").onclick=async()=>{
   if(!diskReady()){toast("Conecta el puente para abrir la carpeta de proyectos.");return;}

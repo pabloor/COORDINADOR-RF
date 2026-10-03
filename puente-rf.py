@@ -1868,6 +1868,88 @@ def demo_ssc(port):
 # ---------------------------------------------------------------------------------------------
 # Ventana de la app
 # ---------------------------------------------------------------------------------------------
+def copy_clipboard(text):
+    """Copia al portapapeles del sistema (macOS: pbcopy). Devuelve si se ha podido."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        subprocess.run(["pbcopy"], input=text.encode("utf-8"), timeout=5, check=True)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+class WindowApi:
+    """Lo único que la página puede pedir a la ventana: poner el nombre del proyecto en el título."""
+
+    def titulo(self, nombre):
+        import webview
+        if webview.windows:
+            n = str(nombre or "").strip()[:80]
+            webview.windows[0].set_title("Coordinador RF" + (f" — {n}" if n else ""))
+
+
+def project_menu(webview_module=None, menu_module=None):
+    """Menú «Proyecto» de la barra de menús de macOS. Cada opción llama a una función de la página (menuProyecto,
+    menuTexto, menuCargar). Copiar y cargar archivos se hacen aquí porque el portapapeles y el selector de archivos del
+    sistema no se pueden usar desde la página sin un gesto del usuario."""
+    wv = webview_module
+    if wv is None:
+        import webview as wv
+    if menu_module is None:
+        from webview import menu as menu_module
+    Menu, Action, Sep = menu_module.Menu, menu_module.MenuAction, menu_module.MenuSeparator
+
+    def js(code):
+        return wv.windows[0].evaluate_js(code) if wv.windows else None
+
+    def acc(nombre):
+        return lambda: js(f"menuProyecto({json.dumps(nombre)})")
+
+    def copiar(kind, ok_msg):
+        def f():
+            txt = js(f"menuTexto({json.dumps(kind)})")
+            if isinstance(txt, str) and txt:
+                ok = copy_clipboard(txt)
+                js(f"toast({json.dumps(ok_msg if ok else 'No se ha podido copiar al portapapeles.')})")
+        return f
+
+    def cargar():
+        if not wv.windows:
+            return
+        dialog = wv.FileDialog.OPEN if hasattr(wv, "FileDialog") else wv.OPEN_DIALOG
+        res = wv.windows[0].create_file_dialog(dialog, allow_multiple=False, file_types=("Proyectos (*.json;*.txt)", "Todos los archivos (*.*)"))
+        if not res:
+            return
+        path = res[0] if isinstance(res, (list, tuple)) else res
+        try:
+            if os.path.getsize(path) > MAX_BODY:
+                raise OSError("archivo demasiado grande")
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            js(f"toast({json.dumps('No se ha podido leer el archivo: ' + str(e))})")
+            return
+        js(f"menuCargar({json.dumps(os.path.basename(path))},{json.dumps(text)})")
+
+    return [Menu("Proyecto", [
+        Action("Cambiar de proyecto…", acc("cambiar")),
+        Sep(),
+        Action("Nuevo proyecto…", acc("nuevo")),
+        Action("Duplicar proyecto…", acc("duplicar")),
+        Action("Renombrar proyecto…", acc("renombrar")),
+        Action("Borrar proyecto…", acc("borrar")),
+        Action("Vaciar este proyecto…", acc("vaciar")),
+        Sep(),
+        Action("Abrir carpeta de proyectos", acc("carpeta")),
+        Action("Cargar archivo como proyecto nuevo…", cargar),
+        Action("Pegar proyecto copiado…", acc("pegar")),
+        Sep(),
+        Action("Copiar lista de frecuencias (CSV)", copiar("csv", "Lista copiada. Pégala en una hoja de cálculo.")),
+        Action("Copiar proyecto", copiar("proyecto", "Proyecto copiado. Guárdalo en un archivo .json para cargarlo después.")),
+    ])]
+
+
 def run_window(url):
     """Abre la app en una ventana propia con pywebview (en Mac, el motor de Safari).
     Bloquea hasta que se cierra la ventana. Devuelve False si no se puede abrir."""
@@ -1884,8 +1966,19 @@ def run_window(url):
                     info["CFBundleName"] = "Coordinador RF"
             except Exception:
                 pass
-        webview.create_window("Coordinador RF", url, width=1440, height=920, min_size=(960, 640))
         kw = {"private_mode": False}  # sin esto, pywebview borra los datos guardados al cerrar
+        api = None
+        import inspect
+        menu_ok = "menu" in inspect.signature(webview.start).parameters  # pywebview 4.1 o posterior
+        if sys.platform == "darwin" and menu_ok:  # en Mac todo lo de «Proyecto» va en la barra de menús (la página oculta lo suyo con ?ventana=1)
+            try:
+                kw["menu"] = project_menu()
+                api = WindowApi()
+                url = url + "/?ventana=1"
+            except Exception as e:
+                print(f"No se ha podido crear el menú Proyecto ({e}): se usan los controles de la ventana.", flush=True)
+                kw.pop("menu", None)
+        webview.create_window("Coordinador RF", url, js_api=api, width=1440, height=920, min_size=(960, 640))
         icon = os.path.join(HERE, "icono.png")
         if os.path.isfile(icon):
             kw["icon"] = icon
