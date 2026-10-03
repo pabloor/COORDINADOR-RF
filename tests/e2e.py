@@ -637,6 +637,15 @@ def t_shure_axient(B):
         pg.click(".tile .exp >> nth=0"); pg.click(".tile .exp >> nth=0")
         check("tras el ciclo vuelve al automático y se detecta otra vez", pg.evaluate("()=>document.querySelector('.tile .exp').dataset.v") == "auto-on")
         check("el texto ya no mezcla audio y pico entre paréntesis", "dBFS" not in m["txt"] and "Antena A -76 dBm" in m["txt"], m["txt"])
+        bt = pg.evaluate("""()=>{const t=[...document.querySelectorAll('.tile')];const q=i=>t[i]&&t[i].querySelector('.batt');
+            return {graf:document.querySelectorAll('.tile .meter, .tile canvas').length,
+                    celdas:[0,1].map(i=>q(i)?q(i).querySelectorAll('.cell').length:null),
+                    llenas:[0,1].map(i=>q(i)?q(i).querySelectorAll('.cell.on').length:null),
+                    cls:[0,1].map(i=>q(i)?q(i).className:null),txt:[0,1].map(i=>q(i)?q(i).innerText.trim():null),title:q(0)?q(0).title:''}}""")
+        check("las tarjetas ya no llevan barra ni gráfica de la portadora", bt["graf"] == 0, bt)
+        check("batería: icono con 5 celdas y tantas llenas como indica el equipo (4 barras → 4)", bt["celdas"] == [5, 5] and bt["llenas"][0] == 4, bt)
+        check("sin dato de batería (255): celdas vacías y guion", bt["llenas"][1] == 0 and bt["txt"][1] == "—" and "muted" in bt["cls"][1], bt)
+        check("el icono lleva el porcentaje y el detalle al pasar el ratón", bt["txt"][0] == "80 %" and "4 de 5 celdas" in bt["title"], bt)
         check("batería y emisor con los nombres de Axient (255 = desconocido)", c1["bars"] == 4 and c1["batt"] == 80 and c1["tx"] == "AD2" and c2["bars"] is None and c2["batt"] is None and c2["battMin"] is None, (c1, c2))
         ctx.close()
     stop.set()
