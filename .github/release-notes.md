@@ -6,6 +6,9 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.12**
+- **Monitor:** el audio se muestra solo por el pico, en 7 LED verdes; la calidad en 5 puntos morados y el nivel de RF en 10 puntos naranjas.
+
 **Novedades de la 1.11**
 - **Monitor más legible:** en cada canal con receptor, RF en 10 puntos, calidad en 5 puntos y audio en 7 LED (RMS y pico);
   el valor exacto de audio aparece al pasar el ratón. Los niveles por antena van en su propia línea.
