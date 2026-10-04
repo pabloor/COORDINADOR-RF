@@ -1914,23 +1914,28 @@ def project_menu(webview_module=None, menu_module=None):
                 js(f"toast({json.dumps(ok_msg if ok else 'No se ha podido copiar al portapapeles.')})")
         return f
 
-    def cargar():
-        if not wv.windows:
-            return
-        dialog = wv.FileDialog.OPEN if hasattr(wv, "FileDialog") else wv.OPEN_DIALOG
-        res = wv.windows[0].create_file_dialog(dialog, allow_multiple=False, file_types=("Proyectos (*.json;*.txt)", "Todos los archivos (*.*)"))
-        if not res:
-            return
-        path = res[0] if isinstance(res, (list, tuple)) else res
-        try:
-            if os.path.getsize(path) > MAX_BODY:
-                raise OSError("archivo demasiado grande")
-            with open(path, encoding="utf-8") as f:
-                text = f.read()
-        except (OSError, UnicodeDecodeError) as e:
-            js(f"toast({json.dumps('No se ha podido leer el archivo: ' + str(e))})")
-            return
-        js(f"menuCargar({json.dumps(os.path.basename(path))},{json.dumps(text)})")
+    def abrir(tipos, funcion):
+        def f():
+            if not wv.windows:
+                return
+            dialog = wv.FileDialog.OPEN if hasattr(wv, "FileDialog") else wv.OPEN_DIALOG
+            res = wv.windows[0].create_file_dialog(dialog, allow_multiple=False, file_types=(tipos, "Todos los archivos (*.*)"))
+            if not res:
+                return
+            path = res[0] if isinstance(res, (list, tuple)) else res
+            try:
+                if os.path.getsize(path) > MAX_BODY:
+                    raise OSError("archivo demasiado grande")
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError as e:
+                js(f"toast({json.dumps('No se ha podido leer el archivo: ' + str(e))})")
+                return
+            js(f"{funcion}({json.dumps(os.path.basename(path))},{json.dumps(text)})")
+        return f
+
+    cargar = abrir("Proyectos (*.json;*.txt)", "menuCargar")
+    importar_wwb = abrir("Show de Wireless Workbench (*.shw;*.xml)", "menuShw")
 
     return [Menu("Proyecto", [
         Action("Cambiar de proyecto…", acc("cambiar")),
@@ -1943,6 +1948,7 @@ def project_menu(webview_module=None, menu_module=None):
         Sep(),
         Action("Abrir carpeta de proyectos", acc("carpeta")),
         Action("Cargar archivo como proyecto nuevo…", cargar),
+        Action("Importar show de Wireless Workbench…", importar_wwb),
         Action("Pegar proyecto copiado…", acc("pegar")),
         Sep(),
         Action("Informe imprimible / PDF…", acc("informe")),

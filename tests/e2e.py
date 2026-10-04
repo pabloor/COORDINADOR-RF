@@ -787,7 +787,7 @@ def t_menu_proyecto(B):
     pr.copy_clipboard = lambda t: copied.append(t) or True
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
-    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 12 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 13 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
     info = {"CFBundleShortVersionString": "0.0.0", "CFBundleVersion": "0.0.0"}
     pr.apply_bundle_info(info)
     check("«Acerca de» muestra el nombre y la versión de la app (no 0.0.0)", info["CFBundleName"] == "Coordinador RF" and info["CFBundleShortVersionString"] == pr.VERSION and info["CFBundleVersion"] == pr.VERSION and pr.VERSION[0].isdigit(), info)
@@ -803,6 +803,7 @@ def t_menu_proyecto(B):
     import tempfile as _t
     dlg_file = [os.path.join(_t.mkdtemp(), "mi proyecto.json")]
     open(dlg_file[0], "w", encoding="utf-8").write('{"groups":[]}')
+    check("el menú tiene «Importar show de Wireless Workbench…»", "Importar show de Wireless Workbench…" in acts)
     acts["Cargar archivo como proyecto nuevo…"]()
     check("cargar lee el archivo elegido y se lo pasa a la página", calls[-1].startswith('menuCargar("mi proyecto.json",') and '{\\"groups\\"' in calls[-1].replace('\\"', '\\\\"') or "groups" in calls[-1], calls[-1])
 
@@ -880,7 +881,69 @@ def t_interferencias(B):
         ctx.close()
 
 
-BLOQUES = {"interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+SHW_DEMO = """<show version="1.0" appl_version="7.1.0.285">
+  <show_properties version="1.0"><show_info><name>Gira &lt;demo&gt;</name></show_info></show_properties>
+  <inventory version="2.1">
+    <device><id dcid="X">AAAA0001-0000-11DD-A000-000EDDCCCCCC</id><model>AD4D-A</model><device_name type="10">AD4D-A</device_name>
+      <channel number="1"><channel_name type="10">01</channel_name></channel>
+      <channel number="2"><channel_name type="10">Voz principal</channel_name></channel></device>
+    <device><id dcid="Y">BBBB0002-0000-11DD-A000-000EDDCCCCCC</id><model>PSM1000</model><device_name type="10">P10T</device_name>
+      <channel number="1"><channel_name type="10">03</channel_name></channel></device>
+  </inventory>
+  <coordination_info>
+    <global_exclusions version="1.1">
+      <frequency_exclusions>
+        <channel><frequency units="kHz">610250</frequency><series>Generic Device - IMD</series><exclude>1</exclude></channel>
+        <channel><frequency units="kHz">611000</frequency><exclude>0</exclude></channel>
+      </frequency_exclusions>
+      <freq_range_exclusions>
+        <range><frequency units="kHz"><start>600100</start><end>600400</end></frequency><source>Detected</source><exclude>1</exclude></range>
+        <range><frequency units="kHz"><start>620000</start><end>620000</end></frequency><exclude>1</exclude></range>
+      </freq_range_exclusions>
+    </global_exclusions>
+  </coordination_info>
+  <coordinated_data_root version="0.3">
+    <mic_channels units="khz" count="4">
+      <freq_entry id="AAAA0001-0000-11DD-A000-000EDDCCCCCC-0"><compat_key><series>AD</series><band>G56</band></compat_key><value>583125</value></freq_entry>
+      <freq_entry id="AAAA0001-0000-11DD-A000-000EDDCCCCCC-1"><compat_key><series>AD</series><band>G56</band></compat_key><value>585650</value></freq_entry>
+      <freq_entry id="BBBB0002-0000-11DD-A000-000EDDCCCCCC-0"><compat_key><series>PSM1000</series><band>G10E</band></compat_key><value>486750</value></freq_entry>
+      <freq_entry id="CCCC0003-0000-11DD-A000-000EDDCCCCCC-0"><compat_key><series>Equipo Raro</series><band>Z9</band></compat_key><value>700500</value></freq_entry>
+    </mic_channels>
+  </coordinated_data_root>
+</show>"""
+
+
+def t_importar_wwb(B):
+    print("Importar un show de Wireless Workbench")
+    import tempfile as _t
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        n0 = pg.evaluate("()=>projIdx.list.length")
+        r = pg.evaluate("(x)=>{const ok=menuShw('demo.shw',x);const g=state.groups;return {ok,n:projIdx.list.length,name:curProject().name,"
+                        "g:g.map(a=>({n:a.name,m:a.model&&a.model.series+'/'+a.model.band,f:a.freqs.map(e=>[e.f,e.locked,e.name||null])})),excl:state.excl,"
+                        "toast:document.querySelector('#toast').textContent}}", SHW_DEMO)
+        check("el show se importa como proyecto nuevo con el nombre del show", r["ok"] and r["n"] == n0 + 1 and r["name"] == "Gira <demo>", r)
+        gs = {g["m"] or g["n"]: g for g in r["g"]}
+        check("un grupo por serie y banda, con la biblioteca de la app", "shure-ad/G56" in gs and "shure-psm1000/G10E" in gs, list(gs))
+        check("frecuencias en kHz, bloqueadas, con el nombre del canal", gs["shure-ad/G56"]["f"] == [[583125, True, "AD4D-A 01"], [585650, True, "Voz principal"]]
+              and gs["shure-psm1000/G10E"]["f"] == [[486750, True, "P10T 03"]], gs)
+        check("un equipo que la biblioteca no conoce queda como grupo de rango propio", any(g["n"].startswith("Equipo Raro Z9") and g["f"][0][0] == 700500 for g in r["g"]), r["g"])
+        lines = r["excl"].split("\n")
+        check("exclusiones: frecuencias y rangos activos, sin las desactivadas", lines == ["600.1-600.4", "610.25", "620"], lines)
+        check("avisa de lo importado y de lo que no se importa", "4 frecuencias en 3 grupos" in r["toast"] and "3 exclusiones" in r["toast"] and "escaneos" in r["toast"] and "sin equipo" in r["toast"], r["toast"])
+        # desde el botón de la página
+        p = os.path.join(_t.mkdtemp(), "otro.shw")
+        open(p, "w", encoding="utf-8").write(SHW_DEMO.replace("Gira &lt;demo&gt;", "Segundo"))
+        pg.set_input_files("#loadShw", p)
+        pg.wait_for_function("()=>curProject().name==='Segundo'", timeout=5000)
+        check("el botón de la página importa el archivo elegido", True)
+        # archivos que no son un show
+        r = pg.evaluate("()=>{const a=menuShw('x.shw','<html/>'),b=menuShw('x.shw','no es xml'),c=menuShw('x.shw','<show><coordinated_data_root><mic_channels/></coordinated_data_root></show>');return [a,b,c,document.querySelector('#toast').textContent]}")
+        check("un archivo que no es un show o no tiene frecuencias se rechaza con un aviso", r[:3] == [False, False, False] and "No se ha podido importar" in r[3], r)
+        ctx.close()
+
+
+BLOQUES = {"importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

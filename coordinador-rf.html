@@ -306,6 +306,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
         <button class="btn small" id="copyCsv">Copiar lista (CSV)</button>
         <button class="btn small" id="copyJson">Copiar proyecto</button>
         <label class="btn small" style="display:inline-block">Cargar como proyecto nuevo<input type="file" id="loadJson" accept=".json,.txt" class="sr"></label>
+        <label class="btn small" style="display:inline-block" title="Lee un show (.shw) de Wireless Workbench: frecuencias coordinadas, nombres de canal y exclusiones">Importar de Wireless Workbench<input type="file" id="loadShw" accept=".shw,.xml" class="sr"></label>
         <button class="btn small" id="pasteJson">Pegar como proyecto nuevo</button>
         <button class="btn small" id="reset">Vaciar este proyecto</button>
       </div>
@@ -1105,6 +1106,10 @@ $("#loadJson").addEventListener("change",ev=>{
   const file=ev.target.files[0];if(!file)return;const rd=new FileReader();
   rd.onload=()=>{try{const s=JSON.parse(rd.result);if(!Array.isArray(s.groups))throw 0;importProject(s,file.name.replace(/\.[^.]+$/,"")||"Proyecto importado");toast("Proyecto cargado como proyecto nuevo.");}catch(e){toast("El archivo no es un proyecto válido.");}};
   rd.readAsText(file);ev.target.value="";
+});
+$("#loadShw").addEventListener("change",ev=>{
+  const file=ev.target.files[0];if(!file)return;const rd=new FileReader();
+  rd.onload=()=>menuShw(file.name,String(rd.result));rd.readAsText(file);ev.target.value="";
 });
 $("#reset").onclick=()=>{if(confirm("¿Vaciar este proyecto y empezar con uno de ejemplo? Los demás proyectos no cambian.")){state=defaultState();applyBridgeMeta();save();initAll();}};
 $("#pasteJson").onclick=()=>{$("#pmText").value="";$("#pasteModal").hidden=false;$("#pmText").focus();};
@@ -2591,6 +2596,61 @@ function menuTexto(kind){return kind==="csv"?csvText():kind==="proyecto"?JSON.st
 function menuCargar(name,text){
   try{const s=JSON.parse(text);if(!s||!Array.isArray(s.groups))throw 0;importProject(s,String(name||"").replace(/\.[^.]+$/,"")||"Proyecto importado");toast("Proyecto cargado como proyecto nuevo.");return true;}
   catch(e){toast("El archivo no es un proyecto válido.");return false;}
+}
+/* ---------- Importar un show de Wireless Workbench (.shw, XML de WWB 6 y 7) ----------
+   Se leen las frecuencias coordinadas (coordinated_data_root/mic_channels), con su serie y banda, el nombre del canal en el
+   inventario y las exclusiones globales (frecuencias y rangos, también los detectados en un escaneo). Cada serie y banda se
+   convierte en un grupo (con la biblioteca de la app si la conoce) con las frecuencias bloqueadas. Los datos de los escaneos y los
+   canales de TV de WWB no vienen dentro del archivo o están en otro formato, y no se importan. */
+function shwParse(text){
+  const doc=new DOMParser().parseFromString(text,"application/xml");
+  const root=doc.documentElement;
+  if(!root||root.nodeName!=="show"||doc.querySelector("parsererror"))throw new Error("no es un show de Wireless Workbench");
+  const tx=(e,sel)=>{const n=e&&e.querySelector(sel);return n?n.textContent.trim():"";};
+  const names=new Map();
+  for(const d of root.querySelectorAll("inventory > device")){
+    const id=tx(d,":scope > id"),dn=tx(d,":scope > device_name")||tx(d,":scope > model");
+    for(const c of d.querySelectorAll(":scope > channel")){const n=parseInt(c.getAttribute("number"),10);if(id&&n>0)names.set(id+"-"+(n-1),{dev:dn,ch:tx(c,":scope > channel_name")});}
+  }
+  const groups=new Map(),order=[];
+  for(const fe of root.querySelectorAll("coordinated_data_root > mic_channels > freq_entry")){
+    const f=parseInt(tx(fe,":scope > value"),10);if(!(f>0))continue;
+    const ck=fe.querySelector(":scope > compat_key"),series=tx(ck,"series"),band=tx(ck,"band"),key=series+"|"+band;
+    if(!groups.has(key)){groups.set(key,{series,band,freqs:[]});order.push(key);}
+    const nm=names.get(fe.getAttribute("id"));let name="";
+    if(nm){name=nm.ch?(/^\d+$/.test(nm.ch)?`${nm.dev} ${nm.ch}`:nm.ch):"";}
+    groups.get(key).freqs.push({f,name:name.slice(0,40)});
+  }
+  const ge=root.querySelector("coordination_info > global_exclusions"),excl=[];
+  if(ge){
+    for(const c of ge.querySelectorAll("frequency_exclusions > channel")){if(tx(c,":scope > exclude")==="0")continue;const f=parseInt(tx(c,":scope > frequency"),10);if(f>0)excl.push(f);}
+    for(const r of ge.querySelectorAll("freq_range_exclusions > range")){if(tx(r,":scope > exclude")==="0")continue;const a=parseInt(tx(r,"frequency > start"),10),b=parseInt(tx(r,"frequency > end"),10);if(a>0&&b>0)excl.push(a===b?a:[Math.min(a,b),Math.max(a,b)]);}
+  }
+  return {name:tx(root,"show_properties > show_info > name"),groups:order.map(k=>groups.get(k)),excl};
+}
+function shwState(p){
+  const kh=v=>(v/1000).toFixed(3).replace(/\.?0+$/,"");
+  const groups=p.groups.map((g,ci)=>{
+    const id="shure-"+g.series.toLowerCase().replace(/[^a-z0-9]/g,""),ls=libSeries(id),known=!!(ls&&libBand(ls,g.band));
+    let gr;
+    if(known)gr=mkModelGroup(id,g.band,g.freqs.length,ci);
+    else{const lo=Math.min(...g.freqs.map(x=>x.f)),hi=Math.max(...g.freqs.map(x=>x.f));
+      gr=mkGroup(`${g.series||"Equipo"} ${g.band||""}`.trim(),g.freqs.length,lo-1000,hi+1000,25,"analog",ci);}
+    gr.freqs=g.freqs.map(x=>{const o={f:x.f,locked:true};if(x.name)o.name=x.name;return o;});
+    gr.known=known;return gr;
+  });
+  const excl=p.excl.sort((a,b)=>(Array.isArray(a)?a[0]:a)-(Array.isArray(b)?b[0]:b)).map(e=>Array.isArray(e)?`${kh(e[0])}-${kh(e[1])}`:kh(e)).join("\n");
+  return {groups,excl};
+}
+function menuShw(name,text){
+  try{
+    const p=shwParse(text),s=shwState(p);
+    if(!s.groups.length)throw new Error("el show no tiene frecuencias coordinadas");
+    const sin=s.groups.filter(g=>!g.known).length,nf=s.groups.reduce((n,g)=>n+g.freqs.length,0);
+    importProject({groups:s.groups,excl:s.excl},p.name||String(name||"").replace(/\.[^.]+$/,"")||"Show de Wireless Workbench");
+    toast(`Importado de Wireless Workbench: ${nf} frecuencias en ${s.groups.length} grupos${p.excl.length?` y ${p.excl.length} exclusiones`:""}${sin?`. ${sin} grupo${sin>1?"s":""} sin equipo en la biblioteca (rango propio)`:""}. No se importan los escaneos ni los canales de TV.`);
+    return true;
+  }catch(e){toast("No se ha podido importar: "+e.message+".");return false;}
 }
 function nativeTitle(){try{const p=curProject();if(document.documentElement.dataset.nativo&&window.pywebview&&pywebview.api&&pywebview.api.titulo)pywebview.api.titulo(p?p.name:"");}catch(e){}}
 window.addEventListener("pywebviewready",nativeTitle);

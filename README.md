@@ -33,10 +33,13 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   seleccionada. Pasando el ratón por la franja inferior (donde se dibujan los productos de intermodulación) un cuadro indica qué
   portadoras producen cada producto y se resaltan en la gráfica. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
   bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista. *Ajustar vista* (o doble clic en la gráfica) encuadra las portadoras coordinadas; al repetirlo muestra las bandas enteras.
+- **Importar de Wireless Workbench:** *Proyecto → Importar show de Wireless Workbench…* (en el navegador, el botón del panel) lee un `.shw` de WWB 6 o 7 y crea un proyecto nuevo con un grupo por
+  serie y banda, las frecuencias coordinadas bloqueadas con el nombre de canal del inventario y las exclusiones globales (frecuencias y rangos, también los detectados en un escaneo). No se importan los datos de los escaneos
+  (WWB solo guarda su ruta) ni los canales de TV.
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (menú *Proyecto → Informe imprimible / PDF*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).
 - **Varios proyectos** con nombre. En la app de Mac todo lo de proyectos está en la barra de menús, en **Proyecto** (cambiar, nuevo, duplicar,
-  renombrar, borrar, vaciar, abrir la carpeta, cargar archivo, pegar, copiar lista CSV y copiar proyecto) y el nombre del proyecto actual va en
+  renombrar, borrar, vaciar, abrir la carpeta, cargar archivo, importar de Wireless Workbench, pegar, copiar lista CSV y copiar proyecto) y el nombre del proyecto actual va en
   el título de la ventana; en el navegador siguen el selector de la cabecera y la sección Proyecto del panel. Se guardan en la app y, con el puente conectado, como archivos en
   `Documentos/Coordinador RF/Proyectos`, de donde se recuperan si se pierden los datos de la app. Informes y registros van a
   `Documentos/Coordinador RF/Informes` y `Registros`.
