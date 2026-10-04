@@ -807,7 +807,80 @@ def t_menu_proyecto(B):
     check("cargar lee el archivo elegido y se lo pasa a la página", calls[-1].startswith('menuCargar("mi proyecto.json",') and '{\\"groups\\"' in calls[-1].replace('\\"', '\\\\"') or "groups" in calls[-1], calls[-1])
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_interferencias(B):
+    print("Avisos de batería e interferencias")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        coordinate(pg)
+        # batería: umbral configurable, solo con emisor encendido
+        r = pg.evaluate("""()=>{
+          const out={};const rx=(c,ex)=>rxAlerts({c},ex,"k").map(a=>a.t+(a.bad?"!":""));
+          state.monitor.batt=20;
+          out.bajo=rx({batt:15,tx:"ULXD2"},"auto");
+          out.alto=rx({batt:60,tx:"ULXD2"},"auto");
+          out.sinTx=rx({batt:0,bars:0},"auto");
+          out.apagado=rx({batt:5,tx:"ULXD2"},"off");
+          out.barra=rx({bars:1,tx:"AD2"},"auto");
+          state.monitor.batt=10;out.u10=rx({batt:15,tx:"ULXD2"},"auto");
+          state.monitor.batt=0;out.sin=rx({batt:3,tx:"ULXD2"},"auto");
+          state.monitor.batt=20;return out;}""")
+        check("batería ≤ 20 % con emisor: alarma con el porcentaje", r["bajo"] == ["Batería baja (15 %)!"], r["bajo"])
+        check("batería alta, sin emisor o emisor apagado: sin aviso", r["alto"] == [] and r["sinTx"] == [] and r["apagado"] == [], r)
+        check("equipos de barras avisan con 1 barra", r["barra"] == ["Batería baja (20 %)!"], r["barra"])
+        check("el umbral 10 % y «sin aviso» se respetan", r["u10"] == [] and r["sin"] == [], r)
+        pg.click('[data-tab="live"]')
+        pg.select_option("#battWarn", "30")
+        check("el selector guarda el umbral", pg.evaluate("()=>state.monitor.batt") == 30)
+        pg.select_option("#battWarn", "20")
+        # calidad baja sostenida
+        r = pg.evaluate("""()=>{
+          const out={};const ch={key:"q1",f:563000};
+          trackQual(ch,{c:{qual:1,tx:"AD2",ant:"A"}},"auto");
+          out.pronto=qualLow("q1");out.alerta0=rxAlerts({c:{qual:1,tx:"AD2",ant:"A"}},"auto","q1").map(a=>a.t);
+          net.qlow.set("q1",Date.now()-6000);
+          out.sostenida=qualLow("q1");out.alerta=rxAlerts({c:{qual:1,tx:"AD2",ant:"A"}},"auto","q1").map(a=>a.t+(a.bad?"!":""));
+          trackQual(ch,{c:{qual:4,tx:"AD2",ant:"A"}},"auto");out.recupera=qualLow("q1");
+          trackQual(ch,{c:{qual:0,tx:"AD2",ant:"-"}},"auto");out.sinPortadora=net.qlow.has("q1");
+          trackQual(ch,{c:{qual:0,tx:"AD2",ant:"A"}},"off");out.apagado=net.qlow.has("q1");
+          return out;}""")
+        check("un valor bajo suelto no avisa", r["pronto"] is False and r["alerta0"] == [], r)
+        check("calidad ≤ 1 durante 5 s: alarma de posible interferencia", r["sostenida"] and r["alerta"] == ["Calidad baja: posible interferencia!"], r)
+        check("al recuperarse, sin portadora o con el canal apagado no cuenta", r["recupera"] is False and r["sinPortadora"] is False and r["apagado"] is False, r)
+        # señal ajena cerca, vista por el analizador
+        pg.click('[data-tab="mon"]')
+        r = pg.evaluate("""()=>{
+          const out={};
+          state.groups=[{id:"g1",name:"A",color:"#e33",freqs:[{f:563000},{f:564000}],qty:2}];
+          state.monitor.expect={"g1:0":"on","g1:1":"on"};
+          const F=[],L=[];for(let f=560000;f<=567000;f+=5){F.push(f);L.push(-110);}
+          const at=(f,v)=>{L[F.findIndex(x=>x>=f)]=v;};
+          live.f=Float64Array.from(F);live.l=Float32Array.from(L);
+          at(563000,-50);at(563100,-60);                       // el propio emisor y su flanco: no cuentan
+          at(562500,-90);                                      // faldas muy por debajo de la portadora: no cuentan
+          mon.near.clear();mon.lastTick=0;monitorTick(10000);
+          out.sinAjena=mon.near.size;
+          at(562000,-65);                                      // señal ajena a 1 MHz del canal 1... fuera de 500 kHz
+          live.l=Float32Array.from(L);mon.lastTick=0;monitorTick(10300);out.lejos=mon.near.size;
+          at(563350,-62);live.l=Float32Array.from(L);          // a 350 kHz del canal 1: ajena
+          mon.lastTick=0;monitorTick(11000);out.empieza=!!(mon.near.get("g1:0")&&!mon.near.get("g1:0").on);
+          mon.lastTick=0;monitorTick(13200);out.activa=!!(mon.near.get("g1:0")&&mon.near.get("g1:0").on);
+          out.log=mon.log[0]&&mon.log[0].txt;
+          out.ch2=!!mon.near.get("g1:1");                      // el canal 2 (564,000) queda a 650 kHz: no
+          renderTiles(true);out.tarjeta=document.querySelector('.tile[data-k="g1:0"] .near').textContent;
+          out.alarma=document.querySelector('.tile[data-k="g1:0"]').classList.contains("alarm");
+          // otro canal coordinado justo ahí: no es ajena
+          state.groups[0].freqs[1].f=563350;mon.near.clear();mon.lastTick=0;monitorTick(20000);mon.lastTick=0;monitorTick(23000);
+          out.coordinada=!!(mon.near.get("g1:0")&&mon.near.get("g1:0").on);
+          return out;}""")
+        check("sin señal ajena no hay aviso (faldas y emisor propio no cuentan)", r["sinAjena"] == 0 and r["lejos"] == 0, r)
+        check("señal ajena a 350 kHz: tarda 2 s en avisar y queda en el registro", r["empieza"] and r["activa"] and "señal ajena cerca" in (r["log"] or ""), r)
+        check("la tarjeta lo muestra y se pone en alarma", "Señal ajena cerca" in r["tarjeta"] and r["alarma"], r)
+        check("otro canal coordinado cerca no se toma por interferencia", r["coordinada"] is False and r["ch2"] is False, r)
+        ctx.close()
+
+
+BLOQUES = {"interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

@@ -44,6 +44,9 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   (sonido y notificación del sistema), probar avisos y el registro están en el menú **Monitor** de la barra de menús del Mac (en el navegador, en
   *Espectro en vivo*); el umbral sigue en *Espectro en vivo* y el botón *Receptores* en *Coordinación*. Estado de cada canal con los niveles del analizador y los datos de los receptores en red, con aviso
   sonoro y notificación del sistema ante alarmas, y registro exportable a CSV.
+- **Avisos del monitor:** además de la portadora y de lo que avisa el receptor, suena (y notifica) la **batería baja** (umbral elegible junto al de dBm: 10, 20 o 30 %, o sin aviso; los equipos que dan barras avisan con 1), la
+  **interferencia** que detecta el propio receptor, la **calidad del enlace** en 1 o menos durante 5 s seguidos y, con analizador, una **señal ajena** a entre 150 y 500 kHz de un canal en uso
+  (por encima del umbral, que dure 2 s y que no sea otro canal coordinado ni la falda del propio emisor). Cada aviso queda en el registro con canal, frecuencia y hora.
 - **Receptores de red (Shure TCP 2202, Sennheiser SSC UDP 45):** el selector *Red por la que buscar* limita la búsqueda a una
   conexión del ordenador (cable, Wi-Fi…) en vez de revisarlas todas. *Importar a la coordinación* crea un grupo con sus frecuencias;
   *Asignar a receptores* enlaza canales virtuales con canales libres compatibles; *Enviar a receptores* programa las frecuencias y después
