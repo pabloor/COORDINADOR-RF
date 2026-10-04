@@ -6,6 +6,10 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.23**
+- **Doble umbral del escaneo, como en Wireless Workbench:** el *umbral de exclusión* (lo que se considera ruido demasiado alto) y el nuevo *umbral de pico*, que trata las señales fuertes del escaneo como emisores activos y las protege con una separación mínima configurable (800 kHz por defecto). *Capturar como escaneo* propone los dos y la importación de un `.shw` de WWB trae los suyos.
+- **Monitor:** se quita el desplegable de batería baja; el aviso queda fijo en el 20 % (1 barra en los equipos que dan barras).
+
 **Novedades de la 1.22**
 - **Importar de Wireless Workbench:** ahora también trae las **reglas de separación** de cada serie y banda (entre canales y de intermodulación de 3.º, 5.º, 7.º y 9.º orden y con 3 transmisores). Si coinciden con un modo del equipo se elige ese modo; si no, el grupo queda como personalizado.
 
