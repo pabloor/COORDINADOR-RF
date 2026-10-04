@@ -509,6 +509,13 @@ def t_grafica_red(B):
         pg.evaluate("()=>fit()")
         rg = pg.evaluate("()=>{const r=document.querySelector('.gcard .rules');return {hint:!!r.querySelector('p.hint'),label:r.querySelector('label').textContent,campos:r.querySelectorAll('input[type=number]').length}}")
         check("bajo «Reglas de separación» ya no hay el cuadro de texto explicativo y se conserva la unidad (kHz) y los campos", not rg["hint"] and "kHz" in rg["label"] and rg["campos"] >= 4, rg)
+        tt = pg.evaluate("()=>{const l=document.querySelector('.gcard .rules label');return {l:l.title,s:l.querySelector('select').title}}")
+        check("el origen de las reglas sale al pasar el ratón por el desplegable (y por su etiqueta)", "fabricante" in tt["s"] and "kHz" in tt["s"] and tt["l"] == tt["s"], tt)
+        pg.evaluate("()=>{const s=document.querySelector('.gcard .rules select');const o=[...s.options].find(o=>o.value==='custom');s.value=o.value;s.dispatchEvent(new Event('change',{bubbles:true}))}")
+        pg.wait_for_timeout(200)
+        check("al cambiar de regla el texto emergente se actualiza", pg.evaluate("()=>document.querySelector('.gcard .rules select').title").startswith("Reglas personalizadas."))
+        pg.evaluate("()=>{const s=document.querySelector('.gcard .rules select');s.value=[...s.options].find(o=>o.value.startsWith('mode:')).value;s.dispatchEvent(new Event('change',{bubbles:true}))}")
+        pg.wait_for_timeout(200)
         # «Ajustar vista»: encuadra las portadoras y, al repetir, muestra las bandas enteras
         pg.evaluate("()=>{state.groups[0].min=470000;state.groups[0].max=694000;analyzeNow();fit()}")
         bandas = pg.evaluate("()=>bounds()")

@@ -959,6 +959,13 @@ function profileOptions(g){
   if(s)h+=`</optgroup>`;
   return h;
 }
+/* Origen de los valores de las reglas: ya no ocupa un cuadro de texto, sale al pasar el ratón por encima del desplegable. */
+function profileNote(g){
+  const s=g.model&&libSeries(g.model.series);
+  if(s&&g.preset.startsWith("mode:")){const m=s.modes[+g.preset.slice(5)];if(m)return (m.src==="fab"?"Basado en datos del fabricante. ":"Valores orientativos. ")+(m.note||"Ajústalos a lo que indique el fabricante.");}
+  if(g.preset==="custom")return "Reglas personalizadas.";
+  return "Valores orientativos: ajústalos a lo que indique el fabricante.";
+}
 function renderGroups(){
   $("#groups").innerHTML=state.groups.map(g=>`
   <div class="gcard" style="--gc:${esc(g.color)}" data-id="${g.id}">
@@ -977,7 +984,7 @@ function renderGroups(){
     </div>
     ${g.model?"":`<label class="f">Paso (kHz)<input type="number" min="5" step="5" data-f="step" value="${g.step}"></label>`}
     <div class="rules">
-      <label class="f">Reglas de separación (mínimo en kHz)<select data-f="preset">${profileOptions(g)}</select></label>
+      <label class="f" title="${esc(profileNote(g))} Separación mínima en kHz.">Reglas de separación (mínimo en kHz)<select data-f="preset" title="${esc(profileNote(g))} Separación mínima en kHz.">${profileOptions(g)}</select></label>
       <div class="row2">
         <label class="f">Entre portadoras<input type="number" min="0" step="5" data-f="cc" value="${g.cc}"></label>
         <label class="f">Con IMD 3er orden<input type="number" min="0" step="5" data-f="im3" value="${g.im3}"></label>
