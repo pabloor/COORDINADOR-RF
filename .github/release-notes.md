@@ -6,6 +6,12 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.14**
+- **Menú «Monitor» en la barra de menús del Mac:** aviso sonoro, notificación, probar avisos y exportar o borrar el registro (en el navegador siguen en Espectro en vivo).
+- **Monitor más limpio:** sin barra ni gráfica de la portadora, sin la línea de nivel de las tarjetas y sin panel lateral; la batería es un icono de 5 celdas
+  y las antenas A y B se muestran con la misma gráfica de puntos, con un punto azul en la que recibe. Se eliminan «Todos encendidos» y «Sin indicar».
+- **Coordinación:** bloquear y desbloquear son candados, deshacer y rehacer son iconos, se elimina «Vaciar no bloqueadas» y el informe pasa al menú Proyecto.
+
 **Novedades de la 1.13**
 - **Menú «Proyecto» en la barra de menús del Mac:** cambiar, nuevo, duplicar, renombrar, borrar, vaciar, abrir carpeta, cargar archivo, pegar, copiar lista (CSV) y copiar proyecto.
   Desaparecen el selector de la cabecera y la sección Proyecto del panel; el nombre del proyecto va en el título de la ventana.
