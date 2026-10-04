@@ -1274,128 +1274,6 @@ def tail(path, n):
         return "(no existe)"
 
 
-# ---------------------------------------------------------------------------------------------
-# Wireless Workbench: búsqueda (solo lectura) de sus archivos de perfiles de fábrica
-# ---------------------------------------------------------------------------------------------
-WWB_NAME = re.compile(r"(FCSeries|Frequency_?Xml|FrequencyXml|freq.*\.xml|compat|coordination|profile|\.fc$)", re.I)
-WWB_EXACT = re.compile(r"FCSeries", re.I)
-
-
-def wwb_roots():
-    """Carpetas donde puede estar instalado Wireless Workbench (y donde guarda sus datos). CRF_WWB_ROOTS las sustituye (pruebas)."""
-    env = os.environ.get("CRF_WWB_ROOTS")
-    if env:
-        return [r for r in env.split(os.pathsep) if r]
-    home = os.path.expanduser("~")
-    if sys.platform == "darwin":
-        return ["/Applications", os.path.join(home, "Applications"), "/Library/Application Support/Shure",
-                os.path.join(home, "Library", "Application Support", "Shure"), os.path.join(home, "Documents", "Shure"),
-                os.path.join(home, "Documents", "Wireless Workbench")]
-    if os.name == "nt":
-        pf = [os.environ.get(k) for k in ("ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA")]
-        return [os.path.join(p, "Shure") for p in pf if p] + [os.path.join(home, "Documents", "Shure")]
-    return [os.path.join(home, "Shure")]
-
-
-def _head(raw, lines, width=220):
-    txt = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
-    out = txt.splitlines()[:lines]
-    return "\n".join("      " + (x[:width] + "…" if len(x) > width else x) for x in out) or "      (vacío)"
-
-
-def wwb_scan(max_files=60, max_entries=60000):
-    """Busca en las carpetas de Wireless Workbench los archivos que parecen perfiles de frecuencias, también dentro de .jar/.zip,
-    y devuelve un informe de texto con su ruta, tamaño y las primeras líneas. Solo lee: no cambia nada ni envía nada."""
-    import zipfile
-    rep, found, seen, apps = [], [], 0, []
-    roots = [r for r in wwb_roots() if os.path.isdir(r)]
-    rep.append("Búsqueda de archivos de Wireless Workbench (solo lectura)")
-    rep.append("Carpetas revisadas: " + (", ".join(roots) if roots else "ninguna existe"))
-    for root in roots:
-        base_depth = root.rstrip(os.sep).count(os.sep)
-        for dirpath, dirs, files in os.walk(root, followlinks=False):
-            depth = dirpath.count(os.sep) - base_depth
-            top = os.path.relpath(dirpath, root).split(os.sep)[0]
-            # en carpetas genéricas (Aplicaciones) solo se baja a lo que tiene pinta de ser de Shure / Wireless Workbench
-            if depth == 0 and os.path.basename(root.rstrip(os.sep)) in ("Applications", "Aplicaciones"):
-                dirs[:] = [d for d in dirs if re.search(r"workbench|wwb|shure", d, re.I)]
-            if depth > 9:
-                dirs[:] = []
-            for d in list(dirs):
-                if WWB_NAME.search(d) and not d.endswith(".app"):
-                    try:
-                        found.append(("dir", os.path.join(dirpath, d), sorted(os.listdir(os.path.join(dirpath, d)))))
-                    except OSError:
-                        pass
-            for f in files:
-                seen += 1
-                if seen > max_entries:
-                    break
-                full = os.path.join(dirpath, f)
-                low = f.lower()
-                if low.endswith((".jar", ".zip")):
-                    try:
-                        if os.path.getsize(full) > 400_000_000:
-                            continue
-                        with zipfile.ZipFile(full) as z:
-                            for e in z.infolist():
-                                if not e.is_dir() and WWB_NAME.search(os.path.basename(e.filename)) and e.file_size < 50_000_000:
-                                    found.append(("zip", full, e))
-                    except (OSError, zipfile.BadZipFile, RuntimeError):
-                        pass
-                elif WWB_NAME.search(f):
-                    found.append(("file", full, None))
-            if seen > max_entries:
-                break
-        # versión de la app, si hay un paquete .app con «Workbench» en el nombre
-        try:
-            for name in os.listdir(root):
-                if re.search(r"workbench|wwb", name, re.I) and name.endswith(".app"):
-                    info = os.path.join(root, name, "Contents", "Info.plist")
-                    ver = ""
-                    try:
-                        with open(info, "rb") as fh:
-                            pl = plistlib.load(fh)
-                        ver = f" versión {pl.get('CFBundleShortVersionString') or pl.get('CFBundleVersion') or '?'}"
-                    except Exception:
-                        pass
-                    apps.append(os.path.join(root, name) + ver)
-        except OSError:
-            pass
-    rep.append("Instalaciones: " + ("; ".join(apps) if apps else "no se ha encontrado ningún paquete «Wireless Workbench…app» en esas carpetas"))
-    rep.append(f"Archivos o carpetas que parecen de perfiles: {len(found)}" + (f" (se detallan los {max_files} primeros)" if len(found) > max_files else ""))
-    # los de nombre FCSeries primero, y se enseña más de ellos
-    found.sort(key=lambda t: (0 if WWB_EXACT.search(os.path.basename(t[1] if t[0] != "zip" else t[2].filename)) else 1, t[1]))
-    for n, item in enumerate(found[:max_files]):
-        kind, path, extra = item
-        rep.append("")
-        if kind == "dir":
-            rep.append(f"[carpeta] {path}  ({len(extra)} elementos)")
-            rep.append("      " + ", ".join(extra[:40]) + (" …" if len(extra) > 40 else ""))
-            continue
-        try:
-            if kind == "file":
-                size = os.path.getsize(path)
-                rep.append(f"[archivo] {path}  ({size:,} bytes)")
-                with open(path, "rb") as fh:
-                    raw = fh.read(60_000)
-            else:
-                import zipfile as _z
-                rep.append(f"[dentro de {os.path.basename(path)}] {extra.filename}  ({extra.file_size:,} bytes)  ← {path}")
-                with _z.ZipFile(path) as z:
-                    raw = z.read(extra.filename)[:60_000]
-        except (OSError, KeyError, RuntimeError) as e:
-            rep.append(f"      (no se ha podido leer: {e})")
-            continue
-        looks_text = raw[:2000].count(b"\x00") == 0
-        base = os.path.basename(path if kind == "file" else extra.filename)
-        rep.append(_head(raw, 150 if WWB_EXACT.search(base) else (25 if n < 12 else 8)) if looks_text else "      (binario)")
-    if not found:
-        rep.append("")
-        rep.append("No se ha encontrado nada. Si Wireless Workbench está en otra carpeta, dime cuál (clic derecho sobre la app → Mostrar contenido del paquete, o su ruta).")
-    return "\n".join(rep)
-
-
 def diagnostics():
     """Texto para pegar en un mensaje cuando algo no funciona: versiones, estado y últimas líneas de los registros."""
     with LOCK:
@@ -1783,8 +1661,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply({"error": str(e)}, 404)
         elif path == "/diagnostics":
             self.reply({"text": diagnostics()})
-        elif path == "/wwb/scan":
-            self.reply({"text": wwb_scan()})
         elif path == "/interfaces":
             self.reply({"interfaces": interface_list()})
         elif path == "/update":

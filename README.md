@@ -51,8 +51,6 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
 - **Espectro en vivo:** RF Explorer, tinySA (USB), simulador y Shure AD600 (red). *Capturar como escaneo* guarda lo que ve el analizador
   (el barrido actual o el máximo de 10 s a 2 min) como escaneo del sitio: se funde con el que hubiera (solo sustituye la parte
   capturada), activa «evitar» y propone un umbral por encima del ruido. La coordinación evita desde ese momento lo que lo supere.
-- **Perfiles de Wireless Workbench:** el botón *Perfiles de Wireless Workbench* (en *Coordinación → Receptores*) busca en este ordenador, solo leyendo, los
-  archivos de perfiles de frecuencias de WWB (también dentro de sus `.jar`) y muestra su ruta, tamaño y primeras líneas, para poder comparar la biblioteca de la app con tu instalación.
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).
 
 ## Firma estable (Mac, opcional)
