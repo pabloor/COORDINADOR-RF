@@ -6,6 +6,10 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.16**
+- **Zoom con lupas (+ y −)** en la gráfica de coordinación. La rueda del ratón y el pellizco del trackpad son proporcionales al gesto, y alejar ya nunca acerca por error.
+- **Ajustar vista** encuadra las portadoras coordinadas; al pulsarlo otra vez (o con doble clic en la gráfica) muestra las bandas enteras de los grupos.
+
 **Novedades de la 1.15**
 - **La app va mucho más fluida con el espectro en vivo:** se corrige un error de los ejes de las gráficas (dibujaban unas 100 000 marcas por cuadro) que hacía lentos
   el espectro en vivo y la gráfica de coordinación, y el eje de frecuencias de la coordinación vuelve a mostrar sus números.
