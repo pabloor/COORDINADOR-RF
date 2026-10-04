@@ -6,6 +6,9 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.22**
+- **Importar de Wireless Workbench:** ahora también trae las **reglas de separación** de cada serie y banda (entre canales y de intermodulación de 3.º, 5.º, 7.º y 9.º orden y con 3 transmisores). Si coinciden con un modo del equipo se elige ese modo; si no, el grupo queda como personalizado.
+
 **Novedades de la 1.21**
 - **Importar de Wireless Workbench:** *Proyecto → Importar show de Wireless Workbench…* lee un `.shw` de WWB 6 o 7 y crea un proyecto nuevo con un grupo por serie y banda, las frecuencias coordinadas bloqueadas con el nombre de canal y las exclusiones globales. No se importan los escaneos ni los canales de TV.
 - **Avisos del monitor:** la **batería baja** suena como alarma (umbral elegible: 10, 20 o 30 %, o sin aviso); nuevos avisos de **interferencia** por calidad del enlace en 1 o menos durante 5 s y, con analizador, por **señal ajena** a entre 150 y 500 kHz de un canal en uso. Cada aviso queda en el registro con canal, frecuencia y hora.
