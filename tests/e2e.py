@@ -807,7 +807,51 @@ def t_menu_proyecto(B):
     check("cargar lee el archivo elegido y se lo pasa a la página", calls[-1].startswith('menuCargar("mi proyecto.json",') and '{\\"groups\\"' in calls[-1].replace('\\"', '\\\\"') or "groups" in calls[-1], calls[-1])
 
 
-BLOQUES = {"coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_wwb(B):
+    print("Búsqueda de archivos de Wireless Workbench (solo lectura)")
+    import zipfile as _zf, tempfile as _t
+    root = _t.mkdtemp(prefix="wwb-")
+    app = os.path.join(root, "Applications", "Wireless Workbench 7.app", "Contents")
+    os.makedirs(os.path.join(app, "Resources", "Frequency_Xml"))
+    os.makedirs(os.path.join(root, "Applications", "Safari.app", "Contents"))
+    import plistlib as _pl
+    with open(os.path.join(app, "Info.plist"), "wb") as f:
+        _pl.dump({"CFBundleShortVersionString": "7.4.1"}, f)
+    open(os.path.join(app, "Resources", "Frequency_Xml", "ULXD_G51.xml"), "w").write("<freq/>")
+    open(os.path.join(root, "Applications", "Safari.app", "Contents", "FCSeries.txt"), "w").write("no debe leerse: no es de Shure")
+    with _zf.ZipFile(os.path.join(app, "Resources", "wwb.jar"), "w") as z:
+        z.writestr("com/shure/FCSeries.txt", "ULXD,robust,350,150,0,0\nULXD,median,350,75,0,0\n" + "x," * 10 + "\n")
+        z.writestr("com/shure/Otro.class", b"\xca\xfe\xba\xbe\x00")
+    out_dir = os.path.join(root, "Applications")
+    old = os.environ.get("CRF_WWB_ROOTS")
+    os.environ["CRF_WWB_ROOTS"] = out_dir
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("puente_wwb", os.path.join(ROOT, "puente-rf.py"))
+        pr = importlib.util.module_from_spec(spec); spec.loader.exec_module(pr)
+        rep = pr.wwb_scan()
+    finally:
+        if old is None:
+            os.environ.pop("CRF_WWB_ROOTS", None)
+        else:
+            os.environ["CRF_WWB_ROOTS"] = old
+    check("encuentra la instalación y su versión", "Wireless Workbench 7.app versión 7.4.1" in rep, rep[:400])
+    check("encuentra la carpeta Frequency_Xml y sus archivos", "[carpeta]" in rep and "ULXD_G51.xml" in rep, rep)
+    check("encuentra FCSeries.txt dentro de un .jar y enseña sus líneas (los de FCSeries primero)", "[dentro de wwb.jar] com/shure/FCSeries.txt" in rep and "ULXD,robust,350,150" in rep and rep.index("FCSeries") < rep.index("Frequency_Xml"), rep)
+    check("no entra en aplicaciones que no son de Shure/Workbench", "Safari" not in rep and "no debe leerse" not in rep, rep)
+    check("no enseña binarios como texto", "Otro.class" not in rep)
+    with bridge(None, env={"CRF_WWB_ROOTS": out_dir}) as br:
+        ctx, pg = B.page(br["url"])
+        pg.click("#netToggle")
+        pg.click("#wwbScan")
+        pg.wait_for_function("()=>document.getElementById('dgText').value.includes('FCSeries')", timeout=15000)
+        check("el botón abre la ventana con el informe, titulada y lista para copiar", pg.is_visible("#diagModal") and "Wireless Workbench" in pg.inner_text("#dgT") and "ULXD,robust" in pg.input_value("#dgText"))
+        pg.click("#dgClose")
+        check("al cerrarla, la ventana vuelve a llamarse «Diagnóstico»", pg.inner_text("#dgT") == "Diagnóstico")
+        ctx.close()
+
+
+BLOQUES = {"coordinacion": t_coordinacion, "wwb": t_wwb, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

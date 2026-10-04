@@ -355,6 +355,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
       <button class="btn small" id="netAdd">Añadir receptor a mano</button>
       <button class="btn small" id="netScan">Buscar en la red</button>
       <button class="btn small" id="netDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
+      <button class="btn small" id="wwbScan" title="Busca en este ordenador los archivos de perfiles de Wireless Workbench y muestra cómo son (solo lee; no cambia ni envía nada)">Perfiles de Wireless Workbench</button>
       <label class="f" style="min-width:230px">Red por la que buscar<select id="netIface"><option value="">Todas las conexiones</option></select></label>
       <button class="btn small ghost" id="netIfaceRefresh" title="Vuelve a leer las conexiones de red del ordenador">Actualizar redes</button>
       <label class="f" style="min-width:260px">Rango a revisar (opcional)<input type="text" id="netRange" spellcheck="false" placeholder="Automático, o por ejemplo 192.168.10.0/24"></label>
@@ -2347,6 +2348,15 @@ async function showDiag(){
   const t=$("#dgText");t.value=txt;$("#diagModal").hidden=false;t.focus();t.select();
 }
 $("#lvDiag").onclick=$("#netDiag").onclick=showDiag;
+/* Busca (solo lectura) los archivos de perfiles de Wireless Workbench de este ordenador y los enseña para copiarlos. */
+$("#wwbScan").onclick=async()=>{
+  const t=$("#dgText"),h=$("#dgT"),old=h.textContent;
+  h.textContent="Archivos de Wireless Workbench";t.value="Buscando… puede tardar unos segundos.";$("#diagModal").hidden=false;
+  if(!state.net.key){t.value="El puente no está conectado: no puedo buscar en el ordenador.";return;}
+  try{t.value=(await diskApi("/wwb/scan")).text;}catch(e){t.value="No se ha podido buscar: "+e.message;}
+  t.focus();t.select();
+  const restore=()=>{h.textContent=old;$("#dgClose").removeEventListener("click",restore);};$("#dgClose").addEventListener("click",restore);
+};
 $("#dgClose").onclick=()=>{$("#diagModal").hidden=true;};
 $("#diagModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#diagModal").hidden=true;});
 $("#dgCopy").onclick=async()=>{toast(await copyText($("#dgText").value)?"Diagnóstico copiado.":"No se ha podido copiar: selecciona el texto y cópialo a mano.");};
