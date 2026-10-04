@@ -6,6 +6,9 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.19**
+- **Perfiles de Wireless Workbench:** nuevo botón (en *Coordinación → Receptores*) que busca, solo leyendo, los archivos de perfiles de frecuencias de WWB en este ordenador y muestra su ruta, tamaño y primeras líneas. Es el primer paso para comparar la biblioteca de la app con tu instalación.
+
 **Novedades de la 1.18**
 - **Coordinación:** se quita el cuadro de texto bajo «Reglas de separación»; el origen de los valores (fabricante u orientativos) sale al pasar el ratón por el desplegable, y la unidad (kHz) está en la etiqueta.
 
