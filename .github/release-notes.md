@@ -6,6 +6,9 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.20**
+- Se quita el botón «Perfiles de Wireless Workbench» de la 1.19: ya se ha comprobado que las bandas, los pasos y las reglas de separación de la biblioteca de Shure coinciden con los de Wireless Workbench 7.4.
+
 **Novedades de la 1.19**
 - **Perfiles de Wireless Workbench:** nuevo botón (en *Coordinación → Receptores*) que busca, solo leyendo, los archivos de perfiles de frecuencias de WWB en este ordenador y muestra su ruta, tamaño y primeras líneas. Es el primer paso para comparar la biblioteca de la app con tu instalación.
 
