@@ -6,6 +6,11 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.15**
+- **La app va mucho más fluida con el espectro en vivo:** se corrige un error de los ejes de las gráficas (dibujaban unas 100 000 marcas por cuadro) que hacía lentos
+  el espectro en vivo y la gráfica de coordinación, y el eje de frecuencias de la coordinación vuelve a mostrar sus números.
+  Además, la cascada y los trazos cuestan mucho menos, sobre todo con muchos puntos (AD600).
+
 **Novedades de la 1.14**
 - **Menú «Monitor» en la barra de menús del Mac:** aviso sonoro, notificación, probar avisos y exportar o borrar el registro (en el navegador siguen en Espectro en vivo).
 - **Monitor más limpio:** sin barra ni gráfica de la portadora, sin la línea de nivel de las tarjetas y sin panel lateral; la batería es un icono de 5 celdas
