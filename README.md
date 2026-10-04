@@ -34,7 +34,7 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   portadoras producen cada producto y se resaltan en la gráfica. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
   bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista. *Ajustar vista* (o doble clic en la gráfica) encuadra las portadoras coordinadas; al repetirlo muestra las bandas enteras.
 - **Importar de Wireless Workbench:** *Proyecto → Importar show de Wireless Workbench…* (en el navegador, el botón del panel) lee un `.shw` de WWB 6 o 7 y crea un proyecto nuevo con un grupo por
-  serie y banda, las frecuencias coordinadas bloqueadas con el nombre de canal del inventario y las exclusiones globales (frecuencias y rangos, también los detectados en un escaneo). No se importan los datos de los escaneos
+  serie y banda, las frecuencias coordinadas bloqueadas con el nombre de canal del inventario, las reglas de separación de cada serie y banda (separación entre canales y de intermodulación de 3.º, 5.º, 7.º y 9.º orden y con 3 transmisores) y las exclusiones globales (frecuencias y rangos, también los detectados en un escaneo). No se importan los datos de los escaneos
   (WWB solo guarda su ruta) ni los canales de TV.
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (menú *Proyecto → Informe imprimible / PDF*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).

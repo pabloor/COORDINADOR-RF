@@ -2621,6 +2621,14 @@ function shwParse(text){
     if(nm){name=nm.ch?(/^\d+$/.test(nm.ch)?`${nm.dev} ${nm.ch}`:nm.ch):"";}
     groups.get(key).freqs.push({f,name:name.slice(0,40)});
   }
+  /* Reglas de separación de cada serie y banda (compatibility_profile_settings), en kHz */
+  const rules=new Map(),RK={ch_ch:"cc",imd_2t3o:"im3",imd_2t5o:"im5",imd_2t7o:"im7",imd_2t9o:"im9",imd_3t3o:"im33"};
+  for(const p of root.querySelectorAll("coordinated_data_root > compatibility_profile_settings > profile")){
+    const sp=p.querySelector("compat_profile > spacing");if(!sp)continue;
+    const r={};for(const [t,k] of Object.entries(RK)){const n=sp.querySelector(t);if(n)r[k]=Math.max(0,parseInt(n.textContent,10)||0);}
+    if(Object.keys(r).length)rules.set(tx(p,":scope > series")+"|"+tx(p,":scope > band"),r);
+  }
+  for(const [k,g] of groups)g.rules=rules.get(k)||null;
   const ge=root.querySelector("coordination_info > global_exclusions"),excl=[];
   if(ge){
     for(const c of ge.querySelectorAll("frequency_exclusions > channel")){if(tx(c,":scope > exclude")==="0")continue;const f=parseInt(tx(c,":scope > frequency"),10);if(f>0)excl.push(f);}
@@ -2637,6 +2645,11 @@ function shwState(p){
     else{const lo=Math.min(...g.freqs.map(x=>x.f)),hi=Math.max(...g.freqs.map(x=>x.f));
       gr=mkGroup(`${g.series||"Equipo"} ${g.band||""}`.trim(),g.freqs.length,lo-1000,hi+1000,25,"analog",ci);}
     gr.freqs=g.freqs.map(x=>{const o={f:x.f,locked:true};if(x.name)o.name=x.name;return o;});
+    if(g.rules){   // separaciones de WWB; si coinciden con un modo de la biblioteca se elige ese modo
+      Object.assign(gr,ruleOf(Object.assign({},ruleOf({}),g.rules)));
+      const k=known?ls.modes.findIndex(m=>{const r=ruleOf(m);return RULE_KEYS.every(x=>r[x]===gr[x]);}):-1;
+      gr.preset=k>=0?"mode:"+k:"custom";
+    }
     gr.known=known;return gr;
   });
   const excl=p.excl.sort((a,b)=>(Array.isArray(a)?a[0]:a)-(Array.isArray(b)?b[0]:b)).map(e=>Array.isArray(e)?`${kh(e[0])}-${kh(e[1])}`:kh(e)).join("\n");
@@ -2648,7 +2661,7 @@ function menuShw(name,text){
     if(!s.groups.length)throw new Error("el show no tiene frecuencias coordinadas");
     const sin=s.groups.filter(g=>!g.known).length,nf=s.groups.reduce((n,g)=>n+g.freqs.length,0);
     importProject({groups:s.groups,excl:s.excl},p.name||String(name||"").replace(/\.[^.]+$/,"")||"Show de Wireless Workbench");
-    toast(`Importado de Wireless Workbench: ${nf} frecuencias en ${s.groups.length} grupos${p.excl.length?` y ${p.excl.length} exclusiones`:""}${sin?`. ${sin} grupo${sin>1?"s":""} sin equipo en la biblioteca (rango propio)`:""}. No se importan los escaneos ni los canales de TV.`);
+    toast(`Importado de Wireless Workbench: ${nf} frecuencias en ${s.groups.length} grupos${p.groups.some(g=>g.rules)?", con sus reglas de separación":""}${p.excl.length?` y ${p.excl.length} exclusiones`:""}${sin?`. ${sin} grupo${sin>1?"s":""} sin equipo en la biblioteca (rango propio)`:""}. No se importan los escaneos ni los canales de TV.`);
     return true;
   }catch(e){toast("No se ha podido importar: "+e.message+".");return false;}
 }

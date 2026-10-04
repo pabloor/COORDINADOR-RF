@@ -903,6 +903,12 @@ SHW_DEMO = """<show version="1.0" appl_version="7.1.0.285">
     </global_exclusions>
   </coordination_info>
   <coordinated_data_root version="0.3">
+    <compatibility_profile_settings version="1.0" count="2">
+      <profile><band>G56</band><series>AD</series><tx_profile>Standard</tx_profile>
+        <compat_profile imd_source="1" name="Standard"><spacing freq_units="KHz"><ch_ch>350</ch_ch><imd_2t3o>75</imd_2t3o><imd_2t5o>0</imd_2t5o><imd_2t7o>0</imd_2t7o><imd_2t9o>0</imd_2t9o><imd_3t3o>0</imd_3t3o></spacing></compat_profile></profile>
+      <profile><band>G10E</band><series>PSM1000</series><tx_profile/>
+        <compat_profile imd_source="1" name="Standard"><spacing freq_units="KHz"><ch_ch>375</ch_ch><imd_2t3o>275</imd_2t3o><imd_2t5o>0</imd_2t5o><imd_2t7o>0</imd_2t7o><imd_2t9o>0</imd_2t9o><imd_3t3o>100</imd_3t3o></spacing></compat_profile></profile>
+    </compatibility_profile_settings>
     <mic_channels units="khz" count="4">
       <freq_entry id="AAAA0001-0000-11DD-A000-000EDDCCCCCC-0"><compat_key><series>AD</series><band>G56</band></compat_key><value>583125</value></freq_entry>
       <freq_entry id="AAAA0001-0000-11DD-A000-000EDDCCCCCC-1"><compat_key><series>AD</series><band>G56</band></compat_key><value>585650</value></freq_entry>
@@ -920,17 +926,19 @@ def t_importar_wwb(B):
         ctx, pg = B.page(br["url"])
         n0 = pg.evaluate("()=>projIdx.list.length")
         r = pg.evaluate("(x)=>{const ok=menuShw('demo.shw',x);const g=state.groups;return {ok,n:projIdx.list.length,name:curProject().name,"
-                        "g:g.map(a=>({n:a.name,m:a.model&&a.model.series+'/'+a.model.band,f:a.freqs.map(e=>[e.f,e.locked,e.name||null])})),excl:state.excl,"
+                        "g:g.map(a=>({n:a.name,m:a.model&&a.model.series+'/'+a.model.band,r:[a.cc,a.im3,a.im5,a.im33],p:a.preset,f:a.freqs.map(e=>[e.f,e.locked,e.name||null])})),excl:state.excl,"
                         "toast:document.querySelector('#toast').textContent}}", SHW_DEMO)
         check("el show se importa como proyecto nuevo con el nombre del show", r["ok"] and r["n"] == n0 + 1 and r["name"] == "Gira <demo>", r)
         gs = {g["m"] or g["n"]: g for g in r["g"]}
         check("un grupo por serie y banda, con la biblioteca de la app", "shure-ad/G56" in gs and "shure-psm1000/G10E" in gs, list(gs))
         check("frecuencias en kHz, bloqueadas, con el nombre del canal", gs["shure-ad/G56"]["f"] == [[583125, True, "AD4D-A 01"], [585650, True, "Voz principal"]]
               and gs["shure-psm1000/G10E"]["f"] == [[486750, True, "P10T 03"]], gs)
+        check("las reglas de separación de WWB pasan al grupo (ch-ch, 3.º orden y 3 transmisores)", gs["shure-ad/G56"]["r"] == [350, 75, 0, 0] and gs["shure-psm1000/G10E"]["r"] == [375, 275, 0, 100], [gs["shure-ad/G56"]["r"], gs["shure-psm1000/G10E"]["r"]])
+        check("si coinciden con un modo del equipo se elige ese modo; si no, quedan como personalizadas", gs["shure-psm1000/G10E"]["p"] == "mode:0" and gs["shure-ad/G56"]["p"] in ("custom",) or gs["shure-ad/G56"]["p"].startswith("mode:"), [gs["shure-ad/G56"]["p"], gs["shure-psm1000/G10E"]["p"]])
         check("un equipo que la biblioteca no conoce queda como grupo de rango propio", any(g["n"].startswith("Equipo Raro Z9") and g["f"][0][0] == 700500 for g in r["g"]), r["g"])
         lines = r["excl"].split("\n")
         check("exclusiones: frecuencias y rangos activos, sin las desactivadas", lines == ["600.1-600.4", "610.25", "620"], lines)
-        check("avisa de lo importado y de lo que no se importa", "4 frecuencias en 3 grupos" in r["toast"] and "3 exclusiones" in r["toast"] and "escaneos" in r["toast"] and "sin equipo" in r["toast"], r["toast"])
+        check("avisa de lo importado y de lo que no se importa", "4 frecuencias en 3 grupos" in r["toast"] and "reglas de separación" in r["toast"] and "3 exclusiones" in r["toast"] and "escaneos" in r["toast"] and "sin equipo" in r["toast"], r["toast"])
         # desde el botón de la página
         p = os.path.join(_t.mkdtemp(), "otro.shw")
         open(p, "w", encoding="utf-8").write(SHW_DEMO.replace("Gira &lt;demo&gt;", "Segundo"))
