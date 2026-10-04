@@ -814,26 +814,20 @@ def t_interferencias(B):
         ctx, pg = B.page(br["url"])
         pg.click('[data-tab="coord"]')
         coordinate(pg)
-        # batería: umbral configurable, solo con emisor encendido
+        # batería: alarma con 20 % o menos, solo con emisor encendido
         r = pg.evaluate("""()=>{
           const out={};const rx=(c,ex)=>rxAlerts({c},ex,"k").map(a=>a.t+(a.bad?"!":""));
-          state.monitor.batt=20;
           out.bajo=rx({batt:15,tx:"ULXD2"},"auto");
           out.alto=rx({batt:60,tx:"ULXD2"},"auto");
           out.sinTx=rx({batt:0,bars:0},"auto");
           out.apagado=rx({batt:5,tx:"ULXD2"},"off");
           out.barra=rx({bars:1,tx:"AD2"},"auto");
-          state.monitor.batt=10;out.u10=rx({batt:15,tx:"ULXD2"},"auto");
-          state.monitor.batt=0;out.sin=rx({batt:3,tx:"ULXD2"},"auto");
-          state.monitor.batt=20;return out;}""")
+          return out;}""")
         check("batería ≤ 20 % con emisor: alarma con el porcentaje", r["bajo"] == ["Batería baja (15 %)!"], r["bajo"])
         check("batería alta, sin emisor o emisor apagado: sin aviso", r["alto"] == [] and r["sinTx"] == [] and r["apagado"] == [], r)
         check("equipos de barras avisan con 1 barra", r["barra"] == ["Batería baja (20 %)!"], r["barra"])
-        check("el umbral 10 % y «sin aviso» se respetan", r["u10"] == [] and r["sin"] == [], r)
         pg.click('[data-tab="live"]')
-        pg.select_option("#battWarn", "30")
-        check("el selector guarda el umbral", pg.evaluate("()=>state.monitor.batt") == 30)
-        pg.select_option("#battWarn", "20")
+        check("ya no hay desplegable de batería", pg.locator("#battWarn").count() == 0)
         # calidad baja sostenida
         r = pg.evaluate("""()=>{
           const out={};const ch={key:"q1",f:563000};
