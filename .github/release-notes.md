@@ -6,6 +6,9 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.17**
+- **«Acerca de Coordinador RF»** muestra el nombre y la versión de la app (antes ponía 0.0.0); también se ve en Finder, en Obtener información.
+
 **Novedades de la 1.16**
 - **Zoom con lupas (+ y −)** en la gráfica de coordinación. La rueda del ratón y el pellizco del trackpad son proporcionales al gesto, y alejar ya nunca acerca por error.
 - **Ajustar vista** encuadra las portadoras coordinadas; al pulsarlo otra vez (o con doble clic en la gráfica) muestra las bandas enteras de los grupos.
