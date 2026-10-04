@@ -323,8 +323,8 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
       <span><i style="background:var(--excl);opacity:.5"></i>Excluida</span>
       <span><i style="background:var(--scan)"></i>Escaneo</span>
     </div>
-    <button class="btn small ghost" id="zin" aria-label="Acercar">Acercar</button>
-    <button class="btn small ghost" id="zout" aria-label="Alejar">Alejar</button>
+    <button class="btn small ghost icon" id="zin" aria-label="Acercar" title="Acercar (también con la rueda del ratón o el gesto de pellizco)"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.7 12.7 17.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 8.5h5M8.5 6v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    <button class="btn small ghost icon" id="zout" aria-label="Alejar" title="Alejar"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.7 12.7 17.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 8.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     <button class="btn small ghost" id="zfit" title="Encuadra las portadoras coordinadas; púlsalo otra vez para ver las bandas enteras (doble clic en la gráfica hace lo mismo)">Ajustar vista</button>
   </div>
   <div class="freqbar" id="freqBar" aria-live="off"></div>
@@ -1237,7 +1237,13 @@ function updFreqBar(){
   if(bar._h!==h){bar.innerHTML=h;bar._h=h;}
 }
 function fAt(e){const r=cv.getBoundingClientRect();return view.a+(e.clientX-r.left-PADL)/(r.width-PADL-PADR)*(view.b-view.a);}
-function zoom(center,k){let a=center-(center-view.a)*k,b=center+(view.b-center)*k;if(b-a<300){const m=(a+b)/2;a=m-150;b=m+150;}if(b-a>600000){const m=(a+b)/2;a=m-300000;b=m+300000;}view={a,b};draw();}
+function zoom(center,k){
+  const [blo,bhi]=bounds(),maxSpan=Math.max(600000,(bhi-blo)*1.5),span=view.b-view.a;
+  let a=center-(center-view.a)*k,b=center+(view.b-center)*k;
+  if(b-a<300){const m=(a+b)/2;a=m-150;b=m+150;}
+  if(b-a>maxSpan){if(k>1&&span>=maxSpan)return;const m=(a+b)/2;a=m-maxSpan/2;b=m+maxSpan/2;}   // al alejar nunca se acerca por error
+  view={a,b};draw();
+}
 function nearest(e){
   const r=cv.getBoundingClientRect(),pxPerK=(r.width-PADL-PADR)/(view.b-view.a),f=fAt(e);let best=null,bd=8;
   for(const c of analysis.C){const d=Math.abs(c.f-f)*pxPerK;if(d<bd){bd=d;best=c;}}return best;
@@ -1293,7 +1299,9 @@ cv.addEventListener("pointerup",e=>{
 });
 cv.addEventListener("pointercancel",()=>{drag=null;endCarDrag(true);});
 cv.addEventListener("pointerleave",()=>{tip.hidden=true;if(hoverSrc.size){hoverSrc=new Set();draw();}if(!carDrag){cursorF=null;updFreqBar();}});
-cv.addEventListener("wheel",e=>{e.preventDefault();zoom(fAt(e),e.deltaY>0?1.25:0.8);},{passive:false});
+cv.addEventListener("wheel",e=>{e.preventDefault();
+  const d=Math.max(-100,Math.min(100,e.deltaMode===1?e.deltaY*33:e.deltaY));
+  zoom(fAt(e),Math.exp(d*(e.ctrlKey?0.012:0.0025)));},{passive:false});
 cv.addEventListener("dblclick",fitButton);
 function scrollToRow(){if(!selected)return;const tr=document.querySelector(`tr.ch[data-k="${selected}"]`);if(tr)tr.scrollIntoView({block:"nearest"});}
 $("#zin").onclick=()=>zoom((view.a+view.b)/2,.6);
