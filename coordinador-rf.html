@@ -271,8 +271,10 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
       <p class="hint">Carga un CSV o TXT con dos columnas: frecuencia y nivel en dBm (RF Explorer, receptores o analizadores). La frecuencia puede estar en MHz, kHz o Hz.</p>
       <label class="f">Archivo de escaneo<input type="file" id="scanFile" accept=".csv,.txt,.tsv"></label>
       <div id="scanInfo" class="hint"></div>
-      <label class="f">Umbral (dBm)<input type="number" id="scanTh" step="1"></label>
-      <label class="chk"><input type="checkbox" id="scanOn">Evitar frecuencias por encima del umbral</label>
+      <label class="f" title="Nivel de ruido que se considera demasiado alto: lo que lo supere en el escaneo se trata como zona no recomendable y se evita al coordinar.">Umbral de exclusión (dBm)<input type="number" id="scanTh" step="1"></label>
+      <label class="f" title="Nivel a partir del cual una señal del escaneo se trata como un emisor activo: se crea una zona de protección a su alrededor. Lo que quede entre los dos umbrales solo se evita en la propia frecuencia; por debajo del de exclusión se desprecia. No puede ser menor que el de exclusión.">Umbral de pico (dBm)<input type="number" id="scanPeak" step="1"></label>
+      <label class="f" title="Separación mínima, en kHz, entre una frecuencia coordinada y un pico del escaneo (el equivalente a la separación entre canales del perfil que WWB asigna a un emisor detectado).">Protección alrededor de un pico (kHz)<input type="number" id="scanProt" step="25" min="0" max="5000"></label>
+      <label class="chk"><input type="checkbox" id="scanOn">Evitar lo que supere los umbrales</label>
       <button class="btn small" id="scanClear">Quitar escaneo</button>
     </div>
   </details>
@@ -633,7 +635,7 @@ function applyModel(g,seriesId,bandName){
 function mkModelGroup(seriesId,bandName,qty,ci){const g=mkGroup("",qty,470000,694000,25,"analog",ci);g.autoName=true;applyModel(g,seriesId,bandName);return g;}
 function defaultState(){
   return {opts:{use5:true,use33:true,use79:true,use35:true,occBw:100,pmse:true},tv:[],excl:"",
-    scan:{f:[],l:[],name:"",threshold:-85,enabled:true},
+    scan:{f:[],l:[],name:"",threshold:-85,peak:-60,protect:800,enabled:true},
     groups:[mkModelGroup("shure-ulxd","G51",8,0),mkModelGroup("senn-iemg4","A",4,1)],
     live:{source:"sim",start:470000,stop:694000,points:450,rfePts:"auto",tiny:"auto",adRbw:350,adAnt:"all",adHost:"",thr:-80,maxOn:true,avgOn:false,viaBridge:!("serial" in navigator),bport:""},
     monitor:{expect:{},alerts:{sound:false,notify:false}},
@@ -724,13 +726,31 @@ function scanMax(a,b){
   for(;i<F.length&&F[i]<=b;i++)if(m===null||L[i]>m)m=L[i];
   return m;
 }
-function buildCtx(){return {tv:state.tv.slice(),excl:parseExcl(),pmse:!!state.opts.pmse,scanOn:state.scan.enabled&&state.scan.f.length>0};}
+/* Picos del escaneo: cada tramo seguido por encima del umbral de pico es un emisor activo, en el punto más alto del tramo. */
+let peakCache={l:null,peak:null,peaks:[]};
+function scanPeaks(){
+  const S=state.scan;
+  if(peakCache.l===S.l&&peakCache.peak===S.peak)return peakCache.peaks;
+  const out=[];let best=-1;
+  for(let i=0;i<=S.f.length;i++){
+    if(i<S.f.length&&S.l[i]>S.peak){if(best<0||S.l[i]>S.l[best])best=i;}
+    else if(best>=0){out.push({f:S.f[best],l:S.l[best]});best=-1;}
+  }
+  peakCache={l:S.l,peak:S.peak,peaks:out};return out;
+}
+let peakF={peaks:null,f:[]};
+function scanPeakF(){const p=scanPeaks();if(peakF.peaks!==p)peakF={peaks:p,f:Float64Array.from(p,x=>x.f)};return peakF.f;}
+function buildCtx(){const on=state.scan.enabled&&state.scan.f.length>0;return {tv:state.tv.slice(),excl:parseExcl(),pmse:!!state.opts.pmse,scanOn:on,peaks:on?scanPeaks():[],pf:on?scanPeakF():[],protect:Math.max(0,state.scan.protect|0)};}
 function blockReason(f,ctx){
   const bw=state.opts.occBw|0;
   for(const n of ctx.tv){const lo=tvLo(n);if(f+bw>lo&&f-bw<lo+8000)return "Dentro del canal de TV "+n+" (ocupado)";}
   for(const [a,b] of ctx.excl){if(f+bw>a&&f-bw<b)return "Dentro de la exclusión "+fmt(a)+"–"+fmt(b);}
   if(ctx.pmse&&!insidePMSE(f-bw,f+bw))return "Fuera del espectro habitual para micrófonos en España/UE";
   if(ctx.scanOn){const lv=scanMax(f-bw,f+bw);if(lv!==null&&lv>state.scan.threshold)return "Señal en el escaneo a "+lv.toFixed(0)+" dBm";}
+  if(ctx.peaks.length&&ctx.protect>0){
+    const P=ctx.peaks;let i=lowerBound(ctx.pf,f-ctx.protect+1);
+    for(;i<P.length&&P[i].f<f+ctx.protect;i++){if(Math.abs(P[i].f-f)<ctx.protect)return `Cerca de un pico del escaneo: ${fmt(P[i].f)} MHz a ${P[i].l.toFixed(0)} dBm (protección ${ctx.protect} kHz)`;}
+  }
   return null;
 }
 function bounds(){let lo=Infinity,hi=-Infinity;for(const g of state.groups){lo=Math.min(lo,g.min);hi=Math.max(hi,g.max);}if(!isFinite(lo)){lo=470000;hi=694000;}return [lo-2000,hi+2000];}
@@ -1065,9 +1085,21 @@ $("#scanFile").addEventListener("change",ev=>{
 });
 function renderScanInfo(){
   const s=state.scan;
-  $("#scanInfo").textContent=s.f.length?`${s.name||"Escaneo"}: ${s.f.length.toLocaleString("es-ES")} puntos, de ${fmt(s.f[0])} a ${fmt(s.f[s.f.length-1])} MHz.`:"Sin escaneo cargado.";
+  const np=s.f.length?scanPeaks().length:0;
+  $("#scanInfo").textContent=s.f.length?`${s.name||"Escaneo"}: ${s.f.length.toLocaleString("es-ES")} puntos, de ${fmt(s.f[0])} a ${fmt(s.f[s.f.length-1])} MHz. ${np?`${np} pico${np>1?"s":""} por encima del umbral de pico.`:"Ningún pico por encima del umbral de pico."}`:"Sin escaneo cargado.";
 }
-$("#scanTh").addEventListener("change",e=>{state.scan.threshold=parseFloat(e.target.value)||-85;save();scheduleAnalyze();});
+function syncScanThr(){const S=state.scan;$("#scanTh").value=S.threshold;$("#scanPeak").value=S.peak;$("#scanProt").value=S.protect;}
+/* El umbral de pico nunca queda por debajo del de exclusión. */
+function setScanThr(which,v){
+  const S=state.scan;
+  if(which==="th"){S.threshold=Number.isFinite(v)?v:-85;if(S.peak<S.threshold)S.peak=S.threshold;}
+  else if(which==="peak"){S.peak=Number.isFinite(v)?Math.max(v,S.threshold):-60;}
+  else S.protect=Number.isFinite(v)?Math.max(0,Math.min(5000,Math.round(v))):800;
+  syncScanThr();renderScanInfo();save();scheduleAnalyze();
+}
+$("#scanTh").addEventListener("change",e=>setScanThr("th",parseFloat(e.target.value)));
+$("#scanPeak").addEventListener("change",e=>setScanThr("peak",parseFloat(e.target.value)));
+$("#scanProt").addEventListener("change",e=>setScanThr("prot",parseFloat(e.target.value)));
 $("#scanOn").addEventListener("change",e=>{state.scan.enabled=e.target.checked;save();scheduleAnalyze();});
 $("#scanClear").onclick=()=>{state.scan.f=[];state.scan.l=[];state.scan.name="";save();renderScanInfo();analyzeNow();renderTable();};
 $("#use5").addEventListener("change",e=>{state.opts.use5=e.target.checked;save();analyzeNow();renderTable();});
@@ -1079,7 +1111,7 @@ $("#pmse").addEventListener("change",e=>{state.opts.pmse=e.target.checked;save()
 function syncControls(){
   syncAlertControls();
   $("#pmse").checked=!!state.opts.pmse;
-  $("#excl").value=state.excl;$("#scanTh").value=state.scan.threshold;$("#scanOn").checked=state.scan.enabled;
+  $("#excl").value=state.excl;syncScanThr();$("#scanOn").checked=state.scan.enabled;
   $("#use5").checked=state.opts.use5;$("#use33").checked=state.opts.use33;$("#use79").checked=state.opts.use79!==false;$("#use35").checked=state.opts.use35!==false;$("#occBw").value=state.opts.occBw;
 }
 
@@ -1655,14 +1687,15 @@ function applyCapture(F,L,label){
   const idx=nf.map((_,i)=>i).sort((a,b)=>nf[a]-nf[b]);
   S.f=idx.map(i=>nf[i]);S.l=idx.map(i=>nl[i]);S.name=label;
   const floor=medianOf(L),sug=Math.max(-110,Math.min(-40,Math.round(floor+10)));
-  if(!had)S.threshold=sug;
+  if(!had){S.threshold=sug;S.peak=Math.min(-30,sug+30);}
+  if(S.peak<S.threshold)S.peak=S.threshold;
   S.enabled=true;
   let zones=0,above=false;
   for(let i=0;i<L.length;i++){const hi=L[i]>S.threshold;if(hi&&!above)zones++;above=hi;}
-  $("#scanTh").value=S.threshold;$("#scanOn").checked=true;
+  syncScanThr();$("#scanOn").checked=true;
   save();renderScanInfo();analyzeNow();renderTable();
-  toast(`Escaneo guardado (${fmt(f0)}–${fmt(f1)} MHz): ruido hacia ${Math.round(floor)} dBm, umbral ${S.threshold} dBm, `+
-    `${zones?`${zones} zona${zones>1?"s":""} ocupada${zones>1?"s":""}`:"ninguna zona ocupada"}. La coordinación ya evita lo que lo supera.`);
+  toast(`Escaneo guardado (${fmt(f0)}–${fmt(f1)} MHz): ruido hacia ${Math.round(floor)} dBm, umbral de exclusión ${S.threshold} dBm y de pico ${S.peak} dBm, `+
+    `${zones?`${zones} zona${zones>1?"s":""} ocupada${zones>1?"s":""}`:"ninguna zona ocupada"}. La coordinación ya evita lo que los supera.`);
   return {zones,floor,threshold:S.threshold};
 }
 function capFinish(){
@@ -2289,7 +2322,7 @@ function buildReport(){
       return `<tr><td>${i+1}</td><td>${esc(e.name||"")}</td><td class="f">${e.f!=null?fmt(e.f):"—"}</td><td>${e.locked?"Sí":""}</td><td>${stt}</td><td>${rxs(e)}</td></tr>`;}).join("");
     return `<h3 style="border-left:6px solid ${esc(g.color)}">${esc(g.name)} <small>${esc(info)}${esc(segsText(g.segs))}, paso ${g.step} kHz</small></h3>
       <table><thead><tr><th>Canal</th><th>Nombre</th><th>Frecuencia (MHz)</th><th>Fija</th><th>Estado</th><th>Receptor</th></tr></thead><tbody>${trs}</tbody></table>`;}).join("");
-  const sc=state.scan&&state.scan.f&&state.scan.f.length?`${esc(state.scan.name||"escaneo cargado")}, umbral ${state.scan.threshold} dBm, ${state.scan.enabled?"se evita":"no se tiene en cuenta"}`:"ninguno";
+  const sc=state.scan&&state.scan.f&&state.scan.f.length?`${esc(state.scan.name||"escaneo cargado")}, exclusión ${state.scan.threshold} dBm, pico ${state.scan.peak} dBm (protección ${state.scan.protect} kHz), ${state.scan.enabled?"se evita":"no se tiene en cuenta"}`:"ninguno";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(name)}: coordinación de frecuencias</title><style>
   body{font:14px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#1b2531;max-width:900px;margin:24px auto;padding:0 18px}
   h1{font-size:26px;margin:0 0 2px}h2{font-size:17px;margin:26px 0 8px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{font-size:15px;margin:18px 0 6px;padding-left:8px}
@@ -2632,7 +2665,9 @@ function shwParse(text){
     for(const c of ge.querySelectorAll("frequency_exclusions > channel")){if(tx(c,":scope > exclude")==="0")continue;const f=parseInt(tx(c,":scope > frequency"),10);if(f>0)excl.push(f);}
     for(const r of ge.querySelectorAll("freq_range_exclusions > range")){if(tx(r,":scope > exclude")==="0")continue;const a=parseInt(tx(r,"frequency > start"),10),b=parseInt(tx(r,"frequency > end"),10);if(a>0&&b>0)excl.push(a===b?a:[Math.min(a,b),Math.max(a,b)]);}
   }
-  return {name:tx(root,"show_properties > show_info > name"),groups:order.map(k=>groups.get(k)),excl};
+  const th=parseFloat(tx(root,"coordination_info > scan_data > threshold")),pk=parseFloat(tx(root,"coordination_info > scan_data > higher_threshold"));
+  return {name:tx(root,"show_properties > show_info > name"),groups:order.map(k=>groups.get(k)),excl,
+    scan:Number.isFinite(th)&&Number.isFinite(pk)&&th>=-130&&pk<=0&&pk>=th?{threshold:th,peak:pk}:null};
 }
 function shwState(p){
   const kh=v=>(v/1000).toFixed(3).replace(/\.?0+$/,"");
@@ -2651,15 +2686,15 @@ function shwState(p){
     gr.known=known;return gr;
   });
   const excl=p.excl.sort((a,b)=>(Array.isArray(a)?a[0]:a)-(Array.isArray(b)?b[0]:b)).map(e=>Array.isArray(e)?`${kh(e[0])}-${kh(e[1])}`:kh(e)).join("\n");
-  return {groups,excl};
+  return {groups,excl,scan:p.scan};
 }
 function menuShw(name,text){
   try{
     const p=shwParse(text),s=shwState(p);
     if(!s.groups.length)throw new Error("el show no tiene frecuencias coordinadas");
     const sin=s.groups.filter(g=>!g.known).length,nf=s.groups.reduce((n,g)=>n+g.freqs.length,0);
-    importProject({groups:s.groups,excl:s.excl},p.name||String(name||"").replace(/\.[^.]+$/,"")||"Show de Wireless Workbench");
-    toast(`Importado de Wireless Workbench: ${nf} frecuencias en ${s.groups.length} grupos${p.groups.some(g=>g.rules)?", con sus reglas de separación":""}${p.excl.length?` y ${p.excl.length} exclusiones`:""}${sin?`. ${sin} grupo${sin>1?"s":""} sin equipo en la biblioteca (rango propio)`:""}. No se importan los escaneos ni los canales de TV.`);
+    importProject(Object.assign({groups:s.groups,excl:s.excl},s.scan?{scan:s.scan}:{}),p.name||String(name||"").replace(/\.[^.]+$/,"")||"Show de Wireless Workbench");
+    toast(`Importado de Wireless Workbench: ${nf} frecuencias en ${s.groups.length} grupos${p.groups.some(g=>g.rules)?", con sus reglas de separación":""}${p.excl.length?` y ${p.excl.length} exclusiones`:""}${p.scan?`, con sus umbrales de exclusión (${p.scan.threshold} dBm) y de pico (${p.scan.peak} dBm)`:""}${sin?`. ${sin} grupo${sin>1?"s":""} sin equipo en la biblioteca (rango propio)`:""}. No se importan los escaneos ni los canales de TV.`);
     return true;
   }catch(e){toast("No se ha podido importar: "+e.message+".");return false;}
 }

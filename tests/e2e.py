@@ -580,7 +580,7 @@ def t_captura(B):
         r = pg.evaluate("()=>({n:state.scan.f.length,on:state.scan.enabled,th:state.scan.threshold,name:state.scan.name,keep:state.scan.f.includes(100000)&&state.scan.f.includes(900000),sorted:state.scan.f.every((f,i,a)=>!i||a[i-1]<=f)})")
         check("capturar guarda el barrido, activa «evitar» y propone un umbral", r["n"] > 50 and r["on"] and -110 <= r["th"] <= -40, r)
         check("fundir: lo que estaba fuera del rango capturado se conserva y todo queda ordenado", r["keep"] and r["sorted"], r)
-        check("el aviso resume ruido, umbral y zonas", "umbral" in pg.inner_text("#toast") and "zona" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        check("el aviso resume ruido, los dos umbrales y zonas", "umbral de exclusión" in pg.inner_text("#toast") and "de pico" in pg.inner_text("#toast") and "zona" in pg.inner_text("#toast"), pg.inner_text("#toast"))
         check("los controles del escaneo reflejan el cambio", pg.evaluate("()=>document.getElementById('scanOn').checked"))
         pl = pg.evaluate("""()=>{const f=()=>lctx.getImageData(0,0,1,1);f();const t=performance.now();for(let i=0;i<5;i++){drawLive();f()}return (performance.now()-t)/5}""")
         check("dibujar el espectro en vivo es rápido (< 300 ms; antes más de 900 ms)", pl < 300, pl)
@@ -885,6 +885,7 @@ SHW_DEMO = """<show version="1.0" appl_version="7.1.0.285">
       <channel number="1"><channel_name type="10">03</channel_name></channel></device>
   </inventory>
   <coordination_info>
+    <scan_data version="1.3"><threshold>-90</threshold><higher_threshold>-60</higher_threshold></scan_data>
     <global_exclusions version="1.1">
       <frequency_exclusions>
         <channel><frequency units="kHz">610250</frequency><series>Generic Device - IMD</series><exclude>1</exclude></channel>
@@ -933,6 +934,8 @@ def t_importar_wwb(B):
         lines = r["excl"].split("\n")
         check("exclusiones: frecuencias y rangos activos, sin las desactivadas", lines == ["600.1-600.4", "610.25", "620"], lines)
         check("avisa de lo importado y de lo que no se importa", "4 frecuencias en 3 grupos" in r["toast"] and "reglas de separación" in r["toast"] and "3 exclusiones" in r["toast"] and "escaneos" in r["toast"] and "sin equipo" in r["toast"], r["toast"])
+        r = pg.evaluate("()=>[state.scan.threshold,state.scan.peak]")
+        check("los umbrales del escaneo del show (exclusión y pico) se importan", r == [-90, -60], r)
         # desde el botón de la página
         p = os.path.join(_t.mkdtemp(), "otro.shw")
         open(p, "w", encoding="utf-8").write(SHW_DEMO.replace("Gira &lt;demo&gt;", "Segundo"))
@@ -945,7 +948,56 @@ def t_importar_wwb(B):
         ctx.close()
 
 
-BLOQUES = {"importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_umbrales(B):
+    print("Escaneo: umbral de exclusión, umbral de pico y protección")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        pg.evaluate("()=>{const d=document.querySelector('#scanTh').closest('details');if(d)d.open=true;}")
+        v = pg.evaluate("()=>[$('#scanTh').value,$('#scanPeak').value,$('#scanProt').value]")
+        check("por defecto: exclusión -85, pico -60 y protección 800 kHz", v == ["-85", "-60", "800"], v)
+        r = pg.evaluate("""()=>{
+          const F=[],L=[];for(let f=560000;f<=566000;f+=25){F.push(f);L.push(-105);}
+          const at=(f,v)=>{L[F.indexOf(f)]=v;};
+          at(562975,-55);at(563000,-45);at(563025,-58);   // un pico fuerte (el punto más alto: 563 MHz)
+          at(565000,-70);                                  // una señal media: pasa el de exclusión, no el de pico
+          state.scan={f:F,l:L,name:"prueba",threshold:-85,peak:-60,protect:800,enabled:true};
+          const out={};const c=()=>buildCtx();
+          out.picos=scanPeaks().map(p=>[p.f,p.l]);
+          out.cerca=blockReason(563600,c());out.lejos=blockReason(563900,c());
+          out.media=blockReason(565000,c());out.mediaCerca=blockReason(565300,c());
+          state.scan.protect=0;out.sinProt=blockReason(563600,c());state.scan.protect=800;
+          state.scan.enabled=false;out.apagado=blockReason(563600,c());state.scan.enabled=true;
+          return out;}""")
+        check("un tramo por encima del umbral de pico es un pico, en su punto más alto", r["picos"] == [[563000, -45]], r["picos"])
+        check("dentro de la protección de un pico no se puede coordinar", r["cerca"] and "pico del escaneo" in r["cerca"] and "563" in r["cerca"], r["cerca"])
+        check("fuera de la protección (900 kHz) queda libre", r["lejos"] is None, r["lejos"])
+        check("una señal media solo se evita en su propia frecuencia", r["media"] and "Señal en el escaneo" in r["media"] and r["mediaCerca"] is None, [r["media"], r["mediaCerca"]])
+        check("con protección 0 o el escaneo apagado no hay zona de pico", r["sinProt"] is None and r["apagado"] is None, [r["sinProt"], r["apagado"]])
+        # el análisis marca una frecuencia coordinada dentro de la zona
+        r = pg.evaluate("""()=>{
+          state.groups=[mkModelGroup("shure-ulxd","G51",1,0)];state.groups[0].freqs[0]={f:563500,locked:true};
+          analyzeNow();return analysis.C[0].issues;}""")
+        check("el análisis avisa de una frecuencia dentro de la zona de un pico", any("pico del escaneo" in s for s in r), r)
+        # los campos de la ventana
+        pg.fill("#scanProt", "400"); pg.press("#scanProt", "Tab")
+        r = pg.evaluate("()=>[state.scan.protect,blockReason(563500,buildCtx())]")
+        check("la protección se cambia desde su campo y se aplica", r[0] == 400 and r[1] is None, r)
+        pg.fill("#scanTh", "-50"); pg.press("#scanTh", "Tab")
+        r = pg.evaluate("()=>[state.scan.threshold,state.scan.peak,$('#scanPeak').value]")
+        check("el umbral de pico nunca queda por debajo del de exclusión", r == [-50, -50, "-50"], r)
+        pg.fill("#scanPeak", "-80"); pg.press("#scanPeak", "Tab")
+        check("…ni al escribirlo a mano", pg.evaluate("()=>state.scan.peak") == -50)
+        pg.fill("#scanTh", "-85"); pg.press("#scanTh", "Tab"); pg.fill("#scanPeak", "-60"); pg.press("#scanPeak", "Tab")
+        info = pg.inner_text("#scanInfo")
+        check("el panel cuenta los picos", "1 pico" in info, info)
+        # guardado y recuperación
+        r = pg.evaluate("()=>{const n=normalize(JSON.parse(JSON.stringify(exportState())));const v=normalize({groups:[],scan:{threshold:-80}});return [n.scan.peak,n.scan.protect,v.scan.peak,v.scan.protect]}")
+        check("se guardan con el proyecto y los proyectos antiguos reciben los valores por defecto", r == [-60, 400, -60, 800], r)
+        ctx.close()
+
+
+BLOQUES = {"umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

@@ -33,6 +33,9 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   seleccionada. Pasando el ratón por la franja inferior (donde se dibujan los productos de intermodulación) un cuadro indica qué
   portadoras producen cada producto y se resaltan en la gráfica. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
   bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista. *Ajustar vista* (o doble clic en la gráfica) encuadra las portadoras coordinadas; al repetirlo muestra las bandas enteras.
+- **Doble umbral del escaneo (como en WWB):** el *umbral de exclusión* marca lo que se considera ruido demasiado alto (lo que lo supera se evita en su propia frecuencia, como antes) y el *umbral de pico* identifica emisores activos:
+  cada tramo del escaneo por encima de él es un pico y se protege con una separación mínima configurable (800 kHz por defecto, el valor del perfil genérico de WWB). Lo que queda entre los dos umbrales solo se evita en su
+  frecuencia, y por debajo del de exclusión se desprecia. El de pico no puede ser menor que el de exclusión; *Capturar como escaneo* propone ambos y la importación de un `.shw` de WWB trae los suyos.
 - **Importar de Wireless Workbench:** *Proyecto → Importar show de Wireless Workbench…* (en el navegador, el botón del panel) lee un `.shw` de WWB 6 o 7 y crea un proyecto nuevo con un grupo por
   serie y banda, las frecuencias coordinadas bloqueadas con el nombre de canal del inventario, las reglas de separación de cada serie y banda (separación entre canales y de intermodulación de 3.º, 5.º, 7.º y 9.º orden y con 3 transmisores) y las exclusiones globales (frecuencias y rangos, también los detectados en un escaneo). No se importan los datos de los escaneos
   (WWB solo guarda su ruta) ni los canales de TV.
