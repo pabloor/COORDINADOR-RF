@@ -325,7 +325,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     </div>
     <button class="btn small ghost" id="zin" aria-label="Acercar">Acercar</button>
     <button class="btn small ghost" id="zout" aria-label="Alejar">Alejar</button>
-    <button class="btn small ghost" id="zfit">Ajustar vista</button>
+    <button class="btn small ghost" id="zfit" title="Encuadra las portadoras coordinadas; púlsalo otra vez para ver las bandas enteras (doble clic en la gráfica hace lo mismo)">Ajustar vista</button>
   </div>
   <div class="freqbar" id="freqBar" aria-live="off"></div>
   <div class="spec-wrap">
@@ -1123,6 +1123,21 @@ const cv=$("#spec"),ctx2=cv.getContext("2d"),tip=$("#tip");
 const PADL=46,PADR=14,PADT=24,PADB=24;
 let view={a:468000,b:696000};
 function fit(){const [lo,hi]=bounds();view={a:lo,b:hi};draw();}
+/* «Ajustar vista»: encuadra las portadoras coordinadas (con un margen); si ya está así, vuelve a mostrar las bandas enteras de los grupos.
+   Sin portadoras, muestra las bandas. (fit() sigue encuadrando las bandas: es lo que se usa al cambiar los grupos.) */
+function carrierView(){
+  const fs=analysis.C.map(c=>c.f);if(!fs.length)return null;
+  let lo=Math.min(...fs),hi=Math.max(...fs);const pad=Math.max(2000,(hi-lo)*.08);lo-=pad;hi+=pad;
+  if(hi-lo<4000){const m=(lo+hi)/2;lo=m-2000;hi=m+2000;}
+  return {a:lo,b:hi};
+}
+function fitButton(){
+  const cv_=carrierView(),[blo,bhi]=bounds();
+  const near=(v,w)=>w&&Math.abs(v.a-w.a)<(w.b-w.a)*.02&&Math.abs(v.b-w.b)<(w.b-w.a)*.02;
+  if(!cv_||near(view,cv_)||(cv_.a<=blo&&cv_.b>=bhi)){view={a:blo,b:bhi};}
+  else view=cv_;
+  draw();
+}
 function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 function niceStep(raw){for(const s of [5,10,25,50,100,250,500,1000,2000,5000,10000,20000,50000,100000])if(s>=raw)return s;return 100000;}
 function draw(){
@@ -1279,11 +1294,11 @@ cv.addEventListener("pointerup",e=>{
 cv.addEventListener("pointercancel",()=>{drag=null;endCarDrag(true);});
 cv.addEventListener("pointerleave",()=>{tip.hidden=true;if(hoverSrc.size){hoverSrc=new Set();draw();}if(!carDrag){cursorF=null;updFreqBar();}});
 cv.addEventListener("wheel",e=>{e.preventDefault();zoom(fAt(e),e.deltaY>0?1.25:0.8);},{passive:false});
-cv.addEventListener("dblclick",fit);
+cv.addEventListener("dblclick",fitButton);
 function scrollToRow(){if(!selected)return;const tr=document.querySelector(`tr.ch[data-k="${selected}"]`);if(tr)tr.scrollIntoView({block:"nearest"});}
 $("#zin").onclick=()=>zoom((view.a+view.b)/2,.6);
 $("#zout").onclick=()=>zoom((view.a+view.b)/2,1.6);
-$("#zfit").onclick=fit;
+$("#zfit").onclick=fitButton;
 new ResizeObserver(()=>draw()).observe(cv);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change",draw);
 

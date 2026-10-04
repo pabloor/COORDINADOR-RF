@@ -32,7 +32,7 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
 - **Gráfica de coordinación:** la barra superior indica la frecuencia de la vista, la del cursor, el canal de TV y la línea
   seleccionada. Pasando el ratón por la franja inferior (donde se dibujan los productos de intermodulación) un cuadro indica qué
   portadoras producen cada producto y se resaltan en la gráfica. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
-  bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista.
+  bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista. *Ajustar vista* (o doble clic en la gráfica) encuadra las portadoras coordinadas; al repetirlo muestra las bandas enteras.
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (menú *Proyecto → Informe imprimible / PDF*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).
 - **Varios proyectos** con nombre. En la app de Mac todo lo de proyectos está en la barra de menús, en **Proyecto** (cambiar, nuevo, duplicar,
