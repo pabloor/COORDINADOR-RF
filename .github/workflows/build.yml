@@ -50,6 +50,13 @@ jobs:
           mkdir -p smoke && perl -e 'alarm shift; exec @ARGV' 90 \
             "dist/Coordinador RF.app/Contents/MacOS/Coordinador RF" -u /x/ad600_console.py 3 smoke/cmd.txt smoke/out.log | tee smoke/stdout.txt
           grep -q "ad600_console" smoke/stdout.txt
+          # La versión que macOS muestra en «Acerca de» y en Obtener información (PyInstaller la deja en 0.0.0); va antes de firmar.
+          VER="$(python -c "import re;print(re.search(r'^VERSION = \"([^\"]+)\"',open('puente-rf.py').read(),re.M).group(1))")"
+          PLIST="dist/Coordinador RF.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VER" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VER" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VER" "$PLIST"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")" = "$VER"
+          echo "Versión de la app: $VER"
           # Firma sin pagar cuenta de desarrollador: con el certificado propio (secretos MAC_CERT_P12 y MAC_CERT_PASSWORD) la identidad
           # es la misma en todas las versiones y macOS conserva los permisos; sin él, firma ad hoc.
           bash mac/firmar.sh "dist/Coordinador RF.app"

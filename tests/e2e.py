@@ -779,6 +779,9 @@ def t_menu_proyecto(B):
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
     check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 12 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    info = {"CFBundleShortVersionString": "0.0.0", "CFBundleVersion": "0.0.0"}
+    pr.apply_bundle_info(info)
+    check("«Acerca de» muestra el nombre y la versión de la app (no 0.0.0)", info["CFBundleName"] == "Coordinador RF" and info["CFBundleShortVersionString"] == pr.VERSION and info["CFBundleVersion"] == pr.VERSION and pr.VERSION[0].isdigit(), info)
     mon = pr.monitor_menu(wv, mm)
     macts = {i.title: i.function for i in mon[0].items if isinstance(i, Action)}
     check("el menú «Monitor» tiene avisos y registro", mon[0].title == "Monitor" and len(macts) == 5 and "Probar avisos" in macts, list(macts))

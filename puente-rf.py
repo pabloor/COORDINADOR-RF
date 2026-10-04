@@ -1974,6 +1974,15 @@ def monitor_menu(webview_module=None, menu_module=None):
     ])]
 
 
+def apply_bundle_info(info):
+    """Nombre y versión que macOS muestra en la barra de menús y en «Acerca de Coordinador RF» (PyInstaller deja la versión en 0.0.0)."""
+    info["CFBundleName"] = "Coordinador RF"
+    info["CFBundleDisplayName"] = "Coordinador RF"
+    info["CFBundleShortVersionString"] = VERSION
+    info["CFBundleVersion"] = VERSION
+    info["NSHumanReadableCopyright"] = "Coordinación de frecuencias RF · github.com/" + UPDATE_REPO
+
+
 def run_window(url):
     """Abre la app en una ventana propia con pywebview (en Mac, el motor de Safari).
     Bloquea hasta que se cierra la ventana. Devuelve False si no se puede abrir."""
@@ -1987,7 +1996,7 @@ def run_window(url):
                 from Foundation import NSBundle
                 info = NSBundle.mainBundle().infoDictionary()
                 if info is not None:
-                    info["CFBundleName"] = "Coordinador RF"
+                    apply_bundle_info(info)
             except Exception:
                 pass
         kw = {"private_mode": False}  # sin esto, pywebview borra los datos guardados al cerrar
