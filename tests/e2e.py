@@ -507,6 +507,8 @@ def t_grafica_red(B):
         wh2 = pg.evaluate("()=>view.b-view.a")
         check("la rueda es proporcional: un gesto pequeño (trackpad) cambia poco y uno grande (ratón) cambia más", abs(wh1 - wh0) < wh0 * 0.03 and wh2 < wh1 * 0.85, (wh0, wh1, wh2))
         pg.evaluate("()=>fit()")
+        rg = pg.evaluate("()=>{const r=document.querySelector('.gcard .rules');return {hint:!!r.querySelector('p.hint'),label:r.querySelector('label').textContent,campos:r.querySelectorAll('input[type=number]').length}}")
+        check("bajo «Reglas de separación» ya no hay el cuadro de texto explicativo y se conserva la unidad (kHz) y los campos", not rg["hint"] and "kHz" in rg["label"] and rg["campos"] >= 4, rg)
         # «Ajustar vista»: encuadra las portadoras y, al repetir, muestra las bandas enteras
         pg.evaluate("()=>{state.groups[0].min=470000;state.groups[0].max=694000;analyzeNow();fit()}")
         bandas = pg.evaluate("()=>bounds()")
