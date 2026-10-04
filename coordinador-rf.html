@@ -191,6 +191,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .leds.rf i.on{background:var(--im5)}
 .leds.q i.on{background:var(--im33)}
 .rx small.sub{color:var(--muted);font-size:11.5px}
+.btn.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px}
 .rr.ants{justify-content:flex-start;flex-wrap:nowrap;gap:10px}
 .rr.ants .leds{gap:2px}.rr.ants .leds i{width:6px;height:6px}
 .ant{display:inline-flex;align-items:center;gap:4px}
@@ -300,6 +301,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
         <button class="btn small" id="projDir">Abrir carpeta</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn small" id="reportBtn" title="Abre una hoja con la coordinación lista para imprimir o guardar como PDF">Informe imprimible / PDF</button>
         <button class="btn small" id="copyCsv">Copiar lista (CSV)</button>
         <button class="btn small" id="copyJson">Copiar proyecto</button>
         <label class="btn small" style="display:inline-block">Cargar como proyecto nuevo<input type="file" id="loadJson" accept=".json,.txt" class="sr"></label>
@@ -333,12 +335,10 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
   <div class="table-wrap">
     <div class="tbar">
       <h2>Frecuencias</h2>
-      <button class="btn small" id="lockAll">Bloquear todas</button>
-      <button class="btn small" id="unlockAll">Desbloquear todas</button>
-      <button class="btn small" id="clearFree">Vaciar no bloqueadas</button>
-      <button class="btn small" id="reportBtn" title="Abre una hoja con la coordinación lista para imprimir o guardar como PDF">Informe</button>
-      <button class="btn small" id="undoBtn" disabled title="Deshacer (⌘Z / Ctrl+Z)">Deshacer</button>
-      <button class="btn small" id="redoBtn" disabled title="Rehacer (⇧⌘Z / Ctrl+Y)">Rehacer</button>
+      <button class="btn small icon" id="lockAll" aria-label="Bloquear todas las frecuencias" title="Bloquear todas: no cambian al coordinar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
+      <button class="btn small icon" id="unlockAll" aria-label="Desbloquear todas las frecuencias" title="Desbloquear todas: se recalculan al coordinar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 0 1 5.6-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <button class="btn small icon" id="undoBtn" disabled aria-label="Deshacer" title="Deshacer (⌘Z / Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 6h6.5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+      <button class="btn small icon" id="redoBtn" disabled aria-label="Rehacer" title="Rehacer (⇧⌘Z / Ctrl+Y)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 6H6.5a3.5 3.5 0 0 0 0 7H10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
       <button class="btn small" id="netToggle" title="Conectar con el puente, buscar y añadir receptores Shure y Sennheiser">Receptores</button>
       <button class="btn small primary" id="sendAll" title="Programa en los receptores de red las frecuencias de los canales enlazados">Enviar a receptores</button>
     </div>
@@ -938,7 +938,6 @@ function selectKey(k,center){
 }
 $("#lockAll").onclick=()=>{for(const g of state.groups)for(const e of g.freqs)if(e.f!=null)e.locked=true;save();renderTable();};
 $("#unlockAll").onclick=()=>{for(const g of state.groups)for(const e of g.freqs)e.locked=false;save();renderTable();};
-$("#clearFree").onclick=()=>{for(const g of state.groups)for(const e of g.freqs)if(!e.locked)e.f=null;save();analyzeNow();renderTable();};
 
 /* ---------- Panel de grupos ---------- */
 function seriesOptions(g){
@@ -1760,14 +1759,11 @@ function renderTiles(force){
     box.innerHTML=ch.length?ch.map(c=>{const ex=state.monitor.expect[c.key]||"auto";return `<div class="tile" data-k="${c.key}" style="--gc:${esc(c.g.color)}">
       <div class="th"><span title="${esc(chFull(c.g,c.i))}">${esc(chName(c.g,c.i))}</span><button class="exp" data-exp="${c.key}" data-v="${ex}">${EXP_TXT[ex]}</button></div>
       <div class="fq">${fmt(c.f)}</div>
-      <div class="rw"><span class="lv">—</span><span class="st s-idle">Sin datos</span></div>
       <div class="rx"></div></div>`;}).join("")
       :`<div class="empty">Aún no hay frecuencias coordinadas. Coordina en la pestaña Coordinación y aparecerán aquí.</div>`;
   }
   box.querySelectorAll(".tile").forEach(el=>{
     const k=el.dataset.k,lv=mon.lv.get(k),s=mon.st.get(k)||chStatus(k,null);
-    el.querySelector(".lv").textContent=lv==null?"—":`${lv.toFixed(1)} dBm`;
-    const st=el.querySelector(".st");st.textContent=s.t;st.className="st s-"+s.c;
     const cc=ch.find(x=>x.key===k),rb=el.querySelector(".rx");
     const eb=el.querySelector(".exp"),exv=state.monitor.expect[k]||"auto",ev=exv==="auto"&&cc&&txSeen(cc)?"auto-on":exv;
     if(eb&&eb.dataset.v!==ev){eb.dataset.v=ev;eb.textContent=ev==="auto-on"?EXP_TXT.on:EXP_TXT[ev];eb.title=ev==="auto-on"?"Detectado por el receptor: tiene un emisor sincronizado":"";}
@@ -2485,7 +2481,7 @@ $("#pkList").addEventListener("click",e=>{const b=e.target.closest("[data-id]");
 $("#pkNo").onclick=()=>{$("#pickModal").hidden=true;};
 $("#pickModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#pickModal").hidden=true;});
 const MENU_ACC={cambiar:()=>projPick(),nuevo:()=>projNew(),duplicar:()=>projDup(),renombrar:()=>projRen(),borrar:()=>projDel(),
-  vaciar:()=>$("#reset").click(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
+  vaciar:()=>$("#reset").click(),informe:()=>$("#reportBtn").click(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
 function menuProyecto(a){const f=MENU_ACC[a];if(f){f();return true;}return false;}
 function menuMonitor(a){
   const sw=(id,txt)=>{const c=$(id);c.checked=!c.checked;c.dispatchEvent(new Event("change"));toast(`${txt} ${c.checked?"activado":"desactivado"}.`);return true;};

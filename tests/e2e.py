@@ -108,6 +108,14 @@ def t_coordinacion(B):
         check("Ctrl+Z deshace", pg.evaluate("()=>!state.groups[0].freqs[0].name"))
         pg.keyboard.press("Control+y")
         check("Ctrl+Y rehace", pg.evaluate("()=>state.groups[0].freqs[0].name")=="Voz principal")
+        tb = pg.evaluate("""()=>{const q=id=>document.getElementById(id);const ic=id=>{const b=q(id);return b?{svg:!!b.querySelector('svg'),txt:b.textContent.trim(),label:b.getAttribute('aria-label')}:null};
+            return {lock:ic('lockAll'),unlock:ic('unlockAll'),undo:ic('undoBtn'),redo:ic('redoBtn'),clear:!!q('clearFree'),informeEn:q('reportBtn')&&q('reportBtn').closest('details.projbox')?'proyecto':'otro'}}""")
+        check("bloquear / desbloquear / deshacer / rehacer son iconos (con etiqueta accesible y sin texto)", all(tb[k]["svg"] and tb[k]["txt"] == "" and tb[k]["label"] for k in ("lock", "unlock", "undo", "redo")), tb)
+        check("«Vaciar no bloqueadas» ya no existe y el informe está en la sección Proyecto", not tb["clear"] and tb["informeEn"] == "proyecto", tb)
+        pg.click("#unlockAll")
+        check("el icono de candado abierto desbloquea todas", pg.evaluate("()=>state.groups.every(g=>g.freqs.every(e=>!e.locked))"))
+        pg.click("#lockAll")
+        check("el de candado cerrado bloquea todas las que tienen frecuencia", pg.evaluate("()=>state.groups.every(g=>g.freqs.every(e=>e.f==null||e.locked))") and pg.evaluate("()=>state.groups.some(g=>g.freqs.some(e=>e.locked))"))
         pg.click('[data-tab="mon"]')
         pg.wait_for_timeout(500)
         check("el nombre del canal aparece en el monitor", pg.eval_on_selector_all(".tile .th span", "els=>els.some(e=>e.textContent==='Voz principal')"))
@@ -221,7 +229,7 @@ def t_alertas_informe(B):
         coordinate(pg)
         pg.fill("input.chname >> nth=0", "Voz <principal>")
         pg.press("input.chname >> nth=0", "Enter")
-        pg.click("#reportBtn")
+        pg.evaluate("()=>document.querySelector('#reportBtn').click()")
         pg.wait_for_timeout(1500)
         inf = glob.glob(os.path.join(br["docs"], "Informes", "*.html"))
         html = open(inf[0], encoding="utf-8").read() if inf else ""
@@ -728,7 +736,7 @@ def t_menu_proyecto(B):
     pr.copy_clipboard = lambda t: copied.append(t) or True
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
-    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 11 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 12 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
     mon = pr.monitor_menu(wv, mm)
     macts = {i.title: i.function for i in mon[0].items if isinstance(i, Action)}
     check("el menú «Monitor» tiene avisos y registro", mon[0].title == "Monitor" and len(macts) == 5 and "Probar avisos" in macts, list(macts))
