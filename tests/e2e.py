@@ -483,6 +483,11 @@ def t_grafica_red(B):
         pg.mouse.move(X(free), geo["t"] + 40)
         pg.mouse.down(); pg.mouse.move(X(free) - 40, geo["t"] + 40, steps=5); pg.mouse.up()
         check("arrastrar el fondo sigue desplazando la vista", pg.evaluate("()=>view.a")!=view0[0])
+        # rendimiento: una función con el mismo nombre ocultaba la de los ejes y cada dibujo hacía ~100 000 marcas
+        pf = pg.evaluate("""()=>{const f=()=>cv.getContext('2d').getImageData(0,0,1,1);f();const t=performance.now();for(let i=0;i<5;i++){draw();f()}
+            return {paso:niceStep(14000),pasoMapa:typeof reportStep,ms:(performance.now()-t)/5}}""")
+        check("el paso del eje de frecuencias es razonable (la función del informe ya no lo sustituye)", pf["paso"] == 20000 and pf["pasoMapa"] == "function", pf)
+        check("dibujar la gráfica de coordinación es rápido (< 300 ms; antes ~850 ms)", pf["ms"] < 300, pf)
         # intermodulación bajo el cursor
         pg.evaluate("()=>fit()")
         geo = pg.evaluate("()=>{const r=cv.getBoundingClientRect();return {l:r.left,t:r.top,w:r.width,h:r.height,a:view.a,b:view.b}}")
@@ -536,6 +541,11 @@ def t_captura(B):
         check("fundir: lo que estaba fuera del rango capturado se conserva y todo queda ordenado", r["keep"] and r["sorted"], r)
         check("el aviso resume ruido, umbral y zonas", "umbral" in pg.inner_text("#toast") and "zona" in pg.inner_text("#toast"), pg.inner_text("#toast"))
         check("los controles del escaneo reflejan el cambio", pg.evaluate("()=>document.getElementById('scanOn').checked"))
+        pl = pg.evaluate("""()=>{const f=()=>lctx.getImageData(0,0,1,1);f();const t=performance.now();for(let i=0;i<5;i++){drawLive();f()}return (performance.now()-t)/5}""")
+        check("dibujar el espectro en vivo es rápido (< 300 ms; antes más de 900 ms)", pl < 300, pl)
+        pw_ = pg.evaluate("""()=>{const n=12000,fk=new Float64Array(n),lv=new Float32Array(n);for(let i=0;i<n;i++){fk[i]=470000+i*224000/(n-1);lv[i]=-100+Math.random()*6}
+            onSweep(fk,lv);const f=()=>lctx.getImageData(0,0,1,1);f();const t=performance.now();for(let i=0;i<5;i++){drawLive();f()}return (performance.now()-t)/5}""")
+        check("con 12 000 puntos (como un AD600) el dibujo también es rápido", pw_ < 300, pw_)
         n0 = pg.evaluate("()=>state.scan.f.length")
         pg.select_option("#lvCapDur", "10")
         pg.click("#lvSave")

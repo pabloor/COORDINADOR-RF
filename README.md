@@ -97,6 +97,7 @@ con resolución de 50, 100, 350 o 900 kHz y las antenas A–F (o todas a la vez)
 pip install -r requirements.txt playwright && python -m playwright install chromium
 python3 puente-rf.py --demo      # con receptores simulados; --ventana para abrirlo en su ventana
 python3 tests/e2e.py             # todas las pruebas (PW_CHROMIUM=/ruta/chromium si hace falta)
+python3 tests/rendimiento.py 3000 8   # coste del espectro en vivo (puntos y segundos); con más de 3000 puntos simula un AD600
 ```
 
 **Publicar una versión:** sube `VERSION` en `puente-rf.py` (la actualización compara versiones con ese número) y, en *Actions → Compilar app → Run workflow*, escribe la etiqueta
