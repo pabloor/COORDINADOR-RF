@@ -570,29 +570,28 @@ def t_captura(B):
     print("Captura de escaneo desde el analizador")
     with bridge() as br:
         ctx, pg = B.page(br["url"])
-        pg.evaluate("()=>{state.scan.f=[100000,100025,900000];state.scan.l=[-50,-50,-60];state.scan.enabled=false;save()}")
+        pg.evaluate("()=>{state.scans=[{id:'previo',name:'Escaneo previo',f:[100000,100025,900000],l:[-50,-50,-60],on:true,color:'#c2531a'}];state.scan.enabled=false;save()}")
         pg.click('[data-tab="live"]')
         pg.select_option("#lvSrc", "sim")
         pg.click("#lvConn")
         pg.wait_for_function("()=>live.f&&live.f.length>10&&live.n>3", timeout=20000)
         pg.select_option("#lvCapDur", "0")
         pg.click("#lvSave")
-        r = pg.evaluate("()=>({n:state.scan.f.length,on:state.scan.enabled,th:state.scan.threshold,name:state.scan.name,keep:state.scan.f.includes(100000)&&state.scan.f.includes(900000),sorted:state.scan.f.every((f,i,a)=>!i||a[i-1]<=f)})")
-        check("capturar guarda el barrido, activa «evitar» y propone un umbral", r["n"] > 50 and r["on"] and -110 <= r["th"] <= -40, r)
-        check("fundir: lo que estaba fuera del rango capturado se conserva y todo queda ordenado", r["keep"] and r["sorted"], r)
-        check("el aviso resume ruido, los dos umbrales y zonas", "umbral de exclusión" in pg.inner_text("#toast") and "de pico" in pg.inner_text("#toast") and "zona" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        r = pg.evaluate("()=>({n:state.scans.length,last:state.scans[state.scans.length-1].f.length,prev:state.scans[0].f.length,on:state.scan.enabled,th:state.scan.threshold,name:state.scans[state.scans.length-1].name,marcado:state.scans[state.scans.length-1].on})")
+        check("capturar añade un escaneo nuevo (marcado), conserva el anterior, activa «evitar» y no cambia los umbrales si ya había escaneos", r["n"] == 2 and r["last"] > 50 and r["prev"] == 3 and r["marcado"] and r["on"] and r["th"] == -85, r)
+        check("el aviso resume ruido y zonas, y recuerda marcarlo", "ruido" in pg.inner_text("#toast") and "zona" in pg.inner_text("#toast"), pg.inner_text("#toast"))
         check("los controles del escaneo reflejan el cambio", pg.evaluate("()=>document.getElementById('scanOn').checked"))
         pl = pg.evaluate("""()=>{const f=()=>lctx.getImageData(0,0,1,1);f();const t=performance.now();for(let i=0;i<5;i++){drawLive();f()}return (performance.now()-t)/5}""")
         check("dibujar el espectro en vivo es rápido (< 300 ms; antes más de 900 ms)", pl < 300, pl)
         pw_ = pg.evaluate("""()=>{const n=12000,fk=new Float64Array(n),lv=new Float32Array(n);for(let i=0;i<n;i++){fk[i]=470000+i*224000/(n-1);lv[i]=-100+Math.random()*6}
             onSweep(fk,lv);const f=()=>lctx.getImageData(0,0,1,1);f();const t=performance.now();for(let i=0;i<5;i++){drawLive();f()}return (performance.now()-t)/5}""")
         check("con 12 000 puntos (como un AD600) el dibujo también es rápido", pw_ < 300, pw_)
-        n0 = pg.evaluate("()=>state.scan.f.length")
+        n0 = pg.evaluate("()=>state.scans.length")
         pg.select_option("#lvCapDur", "10")
         pg.click("#lvSave")
         check("la captura temporizada muestra la cuenta atrás", "Capturando" in pg.inner_text("#lvSave"), pg.inner_text("#lvSave"))
         pg.wait_for_function("()=>!/Capturando/.test(document.getElementById('lvSave').textContent)", timeout=20000)
-        check("al terminar guarda el máximo del periodo", "máximo de 10 s" in pg.evaluate("()=>state.scan.name") and pg.evaluate("()=>state.scan.f.length")>=n0 - 5)
+        check("al terminar guarda el máximo del periodo como otro escaneo", "máximo de 10 s" in pg.evaluate("()=>state.scans[state.scans.length-1].name") and pg.evaluate("()=>state.scans.length") == n0 + 1)
         pg.click('[data-tab="live"]')
         pg.click("#lvConn")
         ctx.close()
@@ -967,7 +966,7 @@ def t_umbrales(B):
           const at=(f,v)=>{L[F.indexOf(f)]=v;};
           at(562975,-55);at(563000,-45);at(563025,-58);   // un pico fuerte (el punto más alto: 563 MHz)
           at(565000,-70);                                  // una señal media: pasa el de exclusión, no el de pico
-          state.scan={f:F,l:L,name:"prueba",threshold:-85,peak:-60,protect:800,enabled:true};
+          state.scans=[{id:"t1",name:"prueba",f:F,l:L,on:true,color:"#2f7896"}];state.scan={threshold:-85,peak:-60,protect:800,mode:"imd",enabled:true};
           const out={};const c=()=>buildCtx();
           out.picos=scanPeaks().map(p=>[p.f,p.l]);
           out.cerca=blockReason(563600,c());out.lejos=blockReason(563900,c());
@@ -1013,7 +1012,7 @@ def t_umbrales(B):
           for(const g of state.groups)g.freqs=g.freqs.map(()=>({f:null,locked:false}));
           const F=[],L=[];for(let f=560000;f<=566000;f+=25){F.push(f);L.push(-105);}
           for(const p of [561000,563000,565000])L[F.indexOf(p)]=-40;
-          state.scan={f:F,l:L,name:"tres picos",threshold:-85,peak:-60,protect:800,mode:"imd",enabled:true};
+          state.scans=[{id:"t2",name:"tres picos",f:F,l:L,on:true,color:"#2f7896"}];state.scan={threshold:-85,peak:-60,protect:800,mode:"imd",enabled:true};
           state.opts.pmse=false;
           await coordinate();
           const fr=analysis.C.map(c=>c.f);
@@ -1077,7 +1076,69 @@ def t_exportar_wwb(B):
         ctx.close()
 
 
-BLOQUES = {"exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_escaneos(B):
+    print("Panel de escaneos: varios, con selección, suma para coordinar y trazas separadas")
+    import tempfile as _t
+    d = _t.mkdtemp()
+    def csv(nombre, picos, base=-105):
+        p = os.path.join(d, nombre)
+        pts = {round(560 + i * 0.025, 3): base for i in range(0, 241)}
+        for f, v in picos.items():
+            pts[f] = v
+        open(p, "w").write("\n".join(f"{f},{v}" for f, v in sorted(pts.items())))
+        return p
+    a = csv("Sala A.csv", {563.0: -45})
+    b = csv("Sala B.csv", {565.0: -45, 563.05: -48})
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        pg.evaluate("()=>{const d=document.querySelector('#scanTh').closest('details');if(d)d.open=true;}")
+        # proyectos antiguos: un solo escaneo dentro de «scan»
+        r = pg.evaluate("""()=>{const s=normalize({groups:[],scan:{f:[100000,100025,100050],l:[-50,-60,-70],name:"viejo",threshold:-80,enabled:true}});
+          return {n:s.scans.length,name:s.scans[0].name,on:s.scans[0].on,pts:s.scans[0].f.length,limpio:!("f" in s.scan)&&!("name" in s.scan),th:s.scan.threshold}}""")
+        check("un proyecto antiguo con un escaneo lo conserva en la lista", r == {"n": 1, "name": "viejo", "on": True, "pts": 3, "limpio": True, "th": -80}, r)
+        pg.evaluate("()=>{state.scans=[];save();renderScanInfo();analyzeNow()}")
+        check("sin escaneos la lista está vacía y lo dice", pg.locator(".scrow").count() == 0 and "Sin escaneos" in pg.inner_text("#scanInfo"))
+        pg.set_input_files("#scanFile", [a, b])
+        pg.wait_for_function("()=>state.scans.length===2", timeout=8000)
+        rows = pg.evaluate("()=>[...document.querySelectorAll('.scrow')].map(r=>[r.querySelector('.nm').textContent,r.querySelector('input').checked,r.querySelector('.sw').style.background])")
+        check("se pueden añadir varios archivos a la vez; cada uno es una fila marcada con su color", len(rows) == 2 and rows[0][0] == "Sala A.csv" and all(x[1] for x in rows) and rows[0][2] != rows[1][2], rows)
+        check("el resumen habla de la suma de los escaneos", "2 escaneos" in pg.inner_text("#scanInfo") and "suma" in pg.inner_text("#scanInfo"), pg.inner_text("#scanInfo"))
+        r = pg.evaluate("""()=>({a:blockReason(563000,buildCtx()),b:blockReason(565000,buildCtx()),libre:blockReason(561500,buildCtx()),picos:scanPeaks().map(p=>p.f)})""")
+        check("se coordina con la suma: lo de A y lo de B se evita", r["a"] and r["b"] and r["libre"] is None, r)
+        check("los picos de varios escaneos a menos de 100 kHz cuentan como uno (el más fuerte)", r["picos"] == [563000, 565000], r["picos"])
+        pg.uncheck('[data-sc] >> nth=1')
+        r = pg.evaluate("()=>({a:blockReason(563000,buildCtx()),b:blockReason(565000,buildCtx()),n:activeScans().length,info:document.querySelector('#scanInfo').textContent})")
+        check("al desmarcar B solo cuenta A", r["a"] and r["b"] is None and r["n"] == 1 and "1 escaneo" in r["info"], r)
+        pg.uncheck('[data-sc] >> nth=0')
+        r = pg.evaluate("()=>({a:blockReason(563000,buildCtx()),info:document.querySelector('#scanInfo').textContent,ctx:buildCtx().scanOn})")
+        check("con todos desmarcados no se evita nada y el panel lo dice", r["a"] is None and r["ctx"] is False and "Ningún escaneo marcado" in r["info"], r)
+        pg.check('[data-sc] >> nth=0'); pg.check('[data-sc] >> nth=1')
+        # la gráfica los dibuja por separado, cada uno con su color
+        r = pg.evaluate("""()=>{const seen=new Set(),o=CanvasRenderingContext2D.prototype.stroke;
+          CanvasRenderingContext2D.prototype.stroke=function(){seen.add(String(this.strokeStyle));return o.apply(this,arguments);};
+          try{state.scans.forEach(s=>s.on=true);draw();}finally{CanvasRenderingContext2D.prototype.stroke=o;}
+          return {cols:state.scans.map(s=>s.color),seen:[...seen]}}""")
+        check("la gráfica de coordinación traza cada escaneo con su propio color", all(c in r["seen"] for c in r["cols"]), r)
+        # quitar uno (con confirmación)
+        pg.click('.scrow [data-del] >> nth=0')
+        check("quitar un escaneo lo borra de la lista y de la coordinación", pg.evaluate("()=>[state.scans.length,state.scans[0].name,blockReason(563000,buildCtx())]") == [1, "Sala B.csv", "Señal en el escaneo a -48 dBm"] or pg.evaluate("()=>[state.scans.length,state.scans[0].name]") == [1, "Sala B.csv"])
+        pg.evaluate("()=>{window.confirm=()=>false}")
+        pg.click('.scrow [data-del] >> nth=0')
+        check("si no se confirma, no se quita", pg.evaluate("()=>state.scans.length") == 1)
+        # se guardan con el proyecto
+        r = pg.evaluate("()=>{const n=normalize(JSON.parse(JSON.stringify(exportState())));return [n.scans.length,n.scans[0].name,n.scans[0].f.length,n.scans[0].color===state.scans[0].color]}")
+        check("los escaneos se guardan y se copian con el proyecto", r == [1, "Sala B.csv", 241, True], r)
+        # archivo que no es un escaneo
+        bad = os.path.join(d, "malo.txt"); open(bad, "w").write("hola\nmundo")
+        pg.evaluate("()=>{window.confirm=()=>true}")
+        pg.set_input_files("#scanFile", bad)
+        pg.wait_for_timeout(500)
+        check("un archivo sin pares frecuencia/nivel se rechaza y no añade nada", pg.evaluate("()=>state.scans.length") == 1 and "No se han encontrado" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+        ctx.close()
+
+
+BLOQUES = {"escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

@@ -181,6 +181,13 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .nettab input,.nettab select{width:100%}
 .tile .rx{border-top:1px dashed var(--line);margin-top:6px;padding-top:6px;font-size:12.5px}
 .tile .rx:empty{display:none}
+.scanlist{display:flex;flex-direction:column;margin:2px 0 4px}
+.scrow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.scrow .sw{flex:none;width:18px;height:4px;border-radius:2px}
+.scrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scrow small{color:var(--muted);white-space:nowrap}
+.scrow .del{flex:none;padding:0 7px}
+.scrow.off .nm,.scrow.off small{opacity:.5}
 .tile .near{margin-top:6px;padding:3px 7px;border-radius:6px;background:var(--im3);color:#fff;font-size:12px;font-weight:600}
 .tile .rx .rr{display:flex;justify-content:space-between;gap:6px}
 .tile .rx .meter{margin:4px 0}
@@ -266,17 +273,18 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     </div>
   </details>
   <details>
-    <summary>Escaneo</summary>
+    <summary>Escaneos</summary>
     <div class="sec">
-      <p class="hint">Carga un CSV o TXT con dos columnas: frecuencia y nivel en dBm (RF Explorer, receptores o analizadores). La frecuencia puede estar en MHz, kHz o Hz.</p>
-      <label class="f">Archivo de escaneo<input type="file" id="scanFile" accept=".csv,.txt,.tsv"></label>
+      <p class="hint">Añade uno o varios CSV o TXT con dos columnas: frecuencia y nivel en dBm (RF Explorer, receptores o analizadores; la frecuencia puede estar en MHz, kHz o Hz). Se coordina con la suma de los marcados, y la gráfica los dibuja por separado.</p>
+      <label class="f">Añadir archivos de escaneo<input type="file" id="scanFile" accept=".csv,.txt,.tsv" multiple></label>
+      <div id="scanList" class="scanlist"></div>
       <div id="scanInfo" class="hint"></div>
       <label class="f" title="Nivel de ruido que se considera demasiado alto: lo que lo supere en el escaneo se trata como zona no recomendable y se evita al coordinar.">Umbral de exclusión (dBm)<input type="number" id="scanTh" step="1"></label>
       <label class="f" title="Nivel a partir del cual una señal del escaneo se trata como un emisor activo: se crea una zona de protección a su alrededor. Lo que quede entre los dos umbrales solo se evita en la propia frecuencia; por debajo del de exclusión se desprecia. No puede ser menor que el de exclusión.">Umbral de pico (dBm)<input type="number" id="scanPeak" step="1"></label>
       <label class="f" title="Separación mínima, en kHz, entre una frecuencia coordinada y un pico del escaneo (el equivalente a la separación entre canales del perfil que WWB asigna a un emisor detectado).">Protección alrededor de un pico (kHz)<input type="number" id="scanProt" step="25" min="0" max="5000"></label>
       <label class="f" title="Cómo se tratan los picos del escaneo. Con intermodulación (como Wireless Workbench) cada pico cuenta como un emisor más: sus productos de intermodulación con las demás frecuencias también se evitan. Solo protección: únicamente se respeta la separación alrededor de cada pico.">Picos del escaneo<select id="scanMode"><option value="imd">Protección e intermodulación (como WWB)</option><option value="prot">Solo protección</option></select></label>
       <label class="chk"><input type="checkbox" id="scanOn">Evitar lo que supere los umbrales</label>
-      <button class="btn small" id="scanClear">Quitar escaneo</button>
+      <button class="btn small" id="scanClear">Quitar todos los escaneos</button>
     </div>
   </details>
   <details>
@@ -327,7 +335,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
       <span><i style="background:var(--im33)"></i>IMD con 3 Tx</span>
       <span><i style="background:var(--tv);opacity:.5"></i>TV ocupada</span>
       <span><i style="background:var(--excl);opacity:.5"></i>Excluida</span>
-      <span><i style="background:var(--scan)"></i>Escaneo</span>
+      <span id="legScans" style="display:contents"></span>
     </div>
     <button class="btn small ghost icon" id="zin" aria-label="Acercar" title="Acercar (también con la rueda del ratón o el gesto de pellizco)"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.7 12.7 17.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 8.5h5M8.5 6v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     <button class="btn small ghost icon" id="zout" aria-label="Alejar" title="Alejar"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.7 12.7 17.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 8.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
@@ -465,6 +473,9 @@ const PRESETS={
   custom:{name:"Personalizado"}
 };
 const COLORS=["#2f7dd1","#1f9e8f","#b7860b","#8e5bb8","#d0602a","#e0468f","#5b7a2e","#6b7c8f"];
+/* Colores de las trazas de los escaneos (distintos de los de los grupos de equipos) */
+const SCAN_COLORS=["#2f7896","#c2531a","#7a58b5","#2a8f5b","#b0912a","#c23b7e","#4a6fa5","#8a6d3b"];
+const newScanId=()=>"s"+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);
 const TV_FIRST=21,TV_LAST=48;
 const tvLo=n=>470000+(n-21)*8000;
 const KEY="coordinador-rf.v1";
@@ -637,7 +648,7 @@ function applyModel(g,seriesId,bandName){
 function mkModelGroup(seriesId,bandName,qty,ci){const g=mkGroup("",qty,470000,694000,25,"analog",ci);g.autoName=true;applyModel(g,seriesId,bandName);return g;}
 function defaultState(){
   return {opts:{use5:true,use33:true,use79:true,use35:true,occBw:100,pmse:true},tv:[],excl:"",
-    scan:{f:[],l:[],name:"",threshold:-85,peak:-60,protect:800,mode:"imd",enabled:true},
+    scan:{threshold:-85,peak:-60,protect:800,mode:"imd",enabled:true},scans:[],
     groups:[mkModelGroup("shure-ulxd","G51",8,0),mkModelGroup("senn-iemg4","A",4,1)],
     live:{source:"sim",start:470000,stop:694000,points:450,rfePts:"auto",tiny:"auto",adRbw:350,adAnt:"all",adHost:"",thr:-80,maxOn:true,avgOn:false,viaBridge:!("serial" in navigator),bport:""},
     monitor:{expect:{},alerts:{sound:false,notify:false}},
@@ -650,8 +661,17 @@ function load(){
 function normalize(s){
   const d=defaultState();
   const st={opts:Object.assign(d.opts,s.opts||{}),tv:Array.isArray(s.tv)?s.tv:[],excl:typeof s.excl==="string"?s.excl:"",
-    scan:Object.assign(d.scan,s.scan||{}),groups:[]};
+    scan:Object.assign(d.scan,s.scan||{}),scans:[],groups:[]};
   if(st.scan.mode!=="prot")st.scan.mode="imd";
+  /* Escaneos: varios por proyecto. Los proyectos antiguos tenían uno solo dentro de «scan» (f, l y name). */
+  let list=Array.isArray(s.scans)?s.scans:[];
+  if(!list.length&&s.scan&&Array.isArray(s.scan.f)&&s.scan.f.length>1)list=[{name:s.scan.name||"Escaneo",f:s.scan.f,l:s.scan.l,on:s.scan.enabled!==false}];
+  delete st.scan.f;delete st.scan.l;delete st.scan.name;
+  for(const x of list){
+    if(!x||!Array.isArray(x.f)||!Array.isArray(x.l)||x.f.length!==x.l.length||x.f.length<2)continue;
+    const color=/^#[0-9a-f]{6}$/i.test(x.color||"")?x.color:SCAN_COLORS[st.scans.length%SCAN_COLORS.length];
+    st.scans.push({id:typeof x.id==="string"&&x.id?x.id:newScanId(),name:String(x.name||"Escaneo").slice(0,80),f:x.f,l:x.l,on:x.on!==false,color});
+  }
   (s.groups||[]).forEach((g,i)=>{
     const base=mkGroup(g.name||"Grupo",Math.max(1,g.qty|0||1),g.min|0||470000,g.max|0||694000,Math.max(5,g.step|0||25),PRESETS[g.preset]?g.preset:"custom",i);
     const ng=Object.assign(base,{id:g.id||base.id,color:g.color||base.color,...ruleOf(g),autoName:!!g.autoName});
@@ -698,7 +718,7 @@ function exportState(){const c=JSON.parse(JSON.stringify(state));c.net.key="";re
 function isDefaultPristine(st){
   const g=st.groups,m=x=>x&&x.model;
   return g.length===2&&m(g[0])&&g[0].model.series==="shure-ulxd"&&g[0].model.band==="G51"&&g[0].qty===8&&m(g[1])&&g[1].model.series==="senn-iemg4"&&g[1].qty===4
-    &&g.every(x=>x.freqs.every(e=>e.f==null&&!e.name&&!e.rx))&&!st.tv.length&&!st.excl&&!(st.scan.f&&st.scan.f.length);
+    &&g.every(x=>x.freqs.every(e=>e.f==null&&!e.name&&!e.rx))&&!st.tv.length&&!st.excl&&!(st.scans&&st.scans.length);
 }
 function save(){
   const p=curProject();if(p){p.t=Date.now();if(p.fresh&&!isDefaultPristine(state))delete p.fresh;}
@@ -724,22 +744,34 @@ function parseExcl(){
     return null;
   }).filter(Boolean);
 }
+/* Escaneos: la coordinación usa la suma (el máximo en cada frecuencia) de los escaneos marcados, y la gráfica los dibuja por separado. */
+const activeScans=()=>state.scans.filter(s=>s.on&&s.f.length>1);
+function addScan(name,f,l){
+  const s={id:newScanId(),name:String(name||"Escaneo").slice(0,80),f,l,on:true,color:SCAN_COLORS[state.scans.length%SCAN_COLORS.length]};
+  state.scans.push(s);return s;
+}
 function scanMax(a,b){
-  const F=state.scan.f,L=state.scan.l;let i=lowerBound(F,a),m=null;
-  for(;i<F.length&&F[i]<=b;i++)if(m===null||L[i]>m)m=L[i];
+  let m=null;
+  for(const S of activeScans())for(let i=lowerBound(S.f,a);i<S.f.length&&S.f[i]<=b;i++)if(m===null||S.l[i]>m)m=S.l[i];
   return m;
 }
 /* Picos del escaneo: cada tramo seguido por encima del umbral de pico es un emisor activo, en el punto más alto del tramo. */
-let peakCache={l:null,peak:null,peaks:[]};
+let peakCache={ls:[],peak:null,peaks:[]};
 function scanPeaks(){
-  const S=state.scan;
-  if(peakCache.l===S.l&&peakCache.peak===S.peak)return peakCache.peaks;
-  const out=[];let best=-1;
-  for(let i=0;i<=S.f.length;i++){
-    if(i<S.f.length&&S.l[i]>S.peak){if(best<0||S.l[i]>S.l[best])best=i;}
-    else if(best>=0){out.push({f:S.f[best],l:S.l[best]});best=-1;}
+  const A=activeScans(),pk=state.scan.peak;
+  if(peakCache.peak===pk&&peakCache.ls.length===A.length&&A.every((s,i)=>peakCache.ls[i]===s.l))return peakCache.peaks;
+  const all=[];
+  for(const S of A){
+    let best=-1;
+    for(let i=0;i<=S.f.length;i++){
+      if(i<S.f.length&&S.l[i]>pk){if(best<0||S.l[i]>S.l[best])best=i;}
+      else if(best>=0){all.push({f:S.f[best],l:S.l[best]});best=-1;}
+    }
   }
-  peakCache={l:S.l,peak:S.peak,peaks:out};return out;
+  all.sort((a,b)=>a.f-b.f);
+  const out=[];   // picos de varios escaneos a menos de 100 kHz son el mismo: queda el más fuerte
+  for(const p of all){const q=out[out.length-1];if(q&&p.f-q.f<100){if(p.l>q.l)out[out.length-1]=p;}else out.push(p);}
+  peakCache={ls:A.map(s=>s.l),peak:pk,peaks:out};return out;
 }
 let peakF={peaks:null,f:[]};
 function scanPeakF(){const p=scanPeaks();if(peakF.peaks!==p)peakF={peaks:p,f:Float64Array.from(p,x=>x.f)};return peakF.f;}
@@ -748,10 +780,10 @@ function scanPeakF(){const p=scanPeaks();if(peakF.peaks!==p)peakF={peaks:p,f:Flo
 const MAX_PEAK_SRC=40;
 function peakProfile(){const p=Math.max(0,state.scan.protect|0);return {cc:p,im3:Math.round(p/2),im5:0,im7:0,im9:0,im33:0,im35:0,ims:true};}
 function peakSources(){
-  const S=state.scan;if(S.mode!=="imd"||!S.enabled||!S.f.length||!(S.protect>0))return [];
+  const S=state.scan;if(S.mode!=="imd"||!S.enabled||!activeScans().length||!(S.protect>0))return [];
   return scanPeaks().slice().sort((a,b)=>b.l-a.l).slice(0,MAX_PEAK_SRC).sort((a,b)=>a.f-b.f);
 }
-function buildCtx(){const on=state.scan.enabled&&state.scan.f.length>0;return {tv:state.tv.slice(),excl:parseExcl(),pmse:!!state.opts.pmse,scanOn:on,peaks:on?scanPeaks():[],pf:on?scanPeakF():[],protect:Math.max(0,state.scan.protect|0)};}
+function buildCtx(){const on=state.scan.enabled&&activeScans().length>0;return {tv:state.tv.slice(),excl:parseExcl(),pmse:!!state.opts.pmse,scanOn:on,peaks:on?scanPeaks():[],pf:on?scanPeakF():[],protect:Math.max(0,state.scan.protect|0)};}
 function blockReason(f,ctx){
   const bw=state.opts.occBw|0;
   for(const n of ctx.tv){const lo=tvLo(n);if(f+bw>lo&&f-bw<lo+8000)return "Dentro del canal de TV "+n+" (ocupado)";}
@@ -1079,29 +1111,54 @@ $("#tvgrid").addEventListener("click",ev=>{
   b.setAttribute("aria-pressed",state.tv.includes(n));save();scheduleAnalyze();
 });
 $("#excl").addEventListener("input",()=>{state.excl=$("#excl").value;save();scheduleAnalyze();});
+function parseScanText(text){
+  const pts=[];
+  for(const line of String(text).split(/\r?\n/)){
+    const nums=line.trim().split(/[;,\t ]+/).map(x=>parseFloat(x));
+    if(nums.length<2||!isFinite(nums[0])||!isFinite(nums[1]))continue;
+    let f=nums[0];f=f>1e7?f/1000:f>1e4?f:f*1000;
+    pts.push([Math.round(f),nums[1]]);
+  }
+  pts.sort((a,b)=>a[0]-b[0]);
+  return pts;
+}
 $("#scanFile").addEventListener("change",ev=>{
-  const file=ev.target.files[0];if(!file)return;
-  const rd=new FileReader();
-  rd.onload=()=>{
-    const pts=[];
-    for(const line of String(rd.result).split(/\r?\n/)){
-      const nums=line.trim().split(/[;,\t ]+/).map(x=>parseFloat(x));
-      if(nums.length<2||!isFinite(nums[0])||!isFinite(nums[1]))continue;
-      let f=nums[0];f=f>1e7?f/1000:f>1e4?f:f*1000;
-      pts.push([Math.round(f),nums[1]]);
-    }
-    if(pts.length<2){toast("No se han encontrado pares frecuencia/nivel en el archivo.");return;}
-    pts.sort((a,b)=>a[0]-b[0]);
-    state.scan.f=pts.map(p=>p[0]);state.scan.l=pts.map(p=>p[1]);state.scan.name=file.name;
-    save();renderScanInfo();analyzeNow();renderTable();toast(`Escaneo cargado: ${pts.length.toLocaleString("es-ES")} puntos.`);
-  };
-  rd.readAsText(file);ev.target.value="";
+  const files=[...ev.target.files];ev.target.value="";if(!files.length)return;
+  const res=new Array(files.length);let pend=files.length;
+  files.forEach((file,k)=>{
+    const rd=new FileReader();
+    rd.onload=()=>{
+      res[k]=parseScanText(rd.result);
+      if(--pend>0)return;
+      // se añaden en el orden en que se eligieron, no en el que termina de leerse cada uno
+      let ok=0;const bad=[];
+      files.forEach((f,i)=>{if(res[i].length<2)bad.push(f.name);else{addScan(f.name,res[i].map(p=>p[0]),res[i].map(p=>p[1]));ok++;}});
+      save();renderScanInfo();analyzeNow();renderTable();
+      toast(ok?`${ok===1?"Escaneo añadido":ok+" escaneos añadidos"}.`+(bad.length?` Sin pares frecuencia/nivel: ${bad.join(", ")}.`:""):"No se han encontrado pares frecuencia/nivel en el archivo.");
+    };
+    rd.readAsText(file);
+  });
 });
 function renderScanInfo(){
-  const s=state.scan;
-  const np=s.f.length?scanPeaks().length:0;
-  $("#scanInfo").textContent=s.f.length?`${s.name||"Escaneo"}: ${s.f.length.toLocaleString("es-ES")} puntos, de ${fmt(s.f[0])} a ${fmt(s.f[s.f.length-1])} MHz. ${np?`${np} pico${np>1?"s":""} por encima del umbral de pico.`:"Ningún pico por encima del umbral de pico."}`:"Sin escaneo cargado.";
+  const L=state.scans,act=activeScans();
+  $("#scanList").innerHTML=L.map(s=>`<div class="scrow${s.on?"":" off"}"><input type="checkbox" data-sc="${esc(s.id)}"${s.on?" checked":""} aria-label="Usar ${esc(s.name)} en la coordinación"><i class="sw" style="background:${esc(s.color)}"></i><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span><small>${s.f.length.toLocaleString("es-ES")} pts · ${fmt(s.f[0])}–${fmt(s.f[s.f.length-1])}</small><button class="btn small ghost del" data-del="${esc(s.id)}" title="Quitar este escaneo" aria-label="Quitar ${esc(s.name)}">×</button></div>`).join("");
+  const np=act.length?scanPeaks().length:0;
+  $("#scanInfo").textContent=!L.length?"Sin escaneos cargados.":!act.length?"Ningún escaneo marcado: no se tiene en cuenta ninguno.":
+    `Se coordina con ${act.length===1?"1 escaneo":act.length+" escaneos (la suma de todos)"}. ${np?`${np} pico${np>1?"s":""} por encima del umbral de pico.`:"Ningún pico por encima del umbral de pico."}`;
+  $("#scanClear").hidden=!L.length;
+  $("#legScans").innerHTML=act.map(s=>`<span title="${esc(s.name)}"><i style="background:${esc(s.color)}"></i>${esc(s.name.length>22?s.name.slice(0,21)+"…":s.name)}</span>`).join("");
 }
+$("#scanList").addEventListener("change",e=>{
+  const c=e.target.closest("[data-sc]");if(!c)return;
+  const s=state.scans.find(x=>x.id===c.dataset.sc);if(!s)return;
+  s.on=c.checked;save();renderScanInfo();analyzeNow();renderTable();
+});
+$("#scanList").addEventListener("click",e=>{
+  const b=e.target.closest("[data-del]");if(!b)return;
+  const s=state.scans.find(x=>x.id===b.dataset.del);if(!s)return;
+  if(!confirm(`¿Quitar el escaneo «${s.name}»? Los datos del escaneo se pierden.`))return;
+  state.scans=state.scans.filter(x=>x!==s);save();renderScanInfo();analyzeNow();renderTable();
+});
 function syncScanThr(){const S=state.scan;$("#scanMode").value=S.mode;$("#scanTh").value=S.threshold;$("#scanPeak").value=S.peak;$("#scanProt").value=S.protect;}
 /* El umbral de pico nunca queda por debajo del de exclusión. */
 function setScanThr(which,v){
@@ -1116,7 +1173,7 @@ $("#scanPeak").addEventListener("change",e=>setScanThr("peak",parseFloat(e.targe
 $("#scanProt").addEventListener("change",e=>setScanThr("prot",parseFloat(e.target.value)));
 $("#scanMode").addEventListener("change",e=>{state.scan.mode=e.target.value==="prot"?"prot":"imd";save();analyzeNow();renderTable();});
 $("#scanOn").addEventListener("change",e=>{state.scan.enabled=e.target.checked;save();scheduleAnalyze();});
-$("#scanClear").onclick=()=>{state.scan.f=[];state.scan.l=[];state.scan.name="";save();renderScanInfo();analyzeNow();renderTable();};
+$("#scanClear").onclick=()=>{if(!state.scans.length||!confirm(`¿Quitar los ${state.scans.length} escaneos? Los datos de los escaneos se pierden.`))return;state.scans=[];save();renderScanInfo();analyzeNow();renderTable();};
 $("#use5").addEventListener("change",e=>{state.opts.use5=e.target.checked;save();analyzeNow();renderTable();});
 $("#use33").addEventListener("change",e=>{state.opts.use33=e.target.checked;save();analyzeNow();renderTable();});
 $("#use79").addEventListener("change",e=>{state.opts.use79=e.target.checked;save();analyzeNow();renderTable();});
@@ -1222,14 +1279,18 @@ function draw(){
   if(state.opts.pmse){g.globalAlpha=.07;g.fillStyle=C.ink;let prev=Math.min(view.a,PMSE_EU[0][0]);for(const [a,b] of PMSE_EU){if(a>prev)g.fillRect(X(prev),PADT,X(a)-X(prev),ph);prev=Math.max(prev,b);}if(view.b>prev)g.fillRect(X(prev),PADT,X(view.b)-X(prev),ph);g.globalAlpha=1;}
   // Escaneo
   const yL=l=>PADT+Math.min(1,Math.max(0,(-20-l)/100))*ph;
-  const S=state.scan;
-  if(S.f.length){
+  const A=activeScans();
+  A.forEach(S=>{   // una traza por escaneo, cada una con su color
     const pxMax=new Float32Array(Math.ceil(pw)+1).fill(NaN);
     for(let i=lowerBound(S.f,view.a);i<S.f.length&&S.f[i]<=view.b;i++){const p=Math.floor((S.f[i]-view.a)/span*pw);if(isNaN(pxMax[p])||S.l[i]>pxMax[p])pxMax[p]=S.l[i];}
-    g.strokeStyle=C.scan;g.lineWidth=1.2;g.beginPath();let started=false;
+    g.strokeStyle=S.color;g.lineWidth=1.2;g.globalAlpha=A.length>1?.85:1;g.beginPath();let started=false;
     for(let p=0;p<pxMax.length;p++){if(isNaN(pxMax[p]))continue;const x=PADL+p,y=yL(pxMax[p]);if(!started){g.moveTo(x,y);started=true;}else g.lineTo(x,y);}
-    g.stroke();
-    if(S.enabled){g.setLineDash([5,4]);g.strokeStyle=C.scan;g.globalAlpha=.7;const y=yL(S.threshold);g.beginPath();g.moveTo(PADL,y);g.lineTo(PADL+pw,y);g.stroke();g.setLineDash([]);g.globalAlpha=1;}
+    g.stroke();g.globalAlpha=1;
+  });
+  if(A.length&&state.scan.enabled){   // umbrales: exclusión y, más claro, pico
+    g.setLineDash([5,4]);g.strokeStyle=C.scan;g.globalAlpha=.7;
+    for(const [v,al] of [[state.scan.threshold,.7],[state.scan.peak,.4]]){g.globalAlpha=al;const y=yL(v);g.beginPath();g.moveTo(PADL,y);g.lineTo(PADL+pw,y);g.stroke();}
+    g.setLineDash([]);g.globalAlpha=1;
   }
   // IMD
   const bins=(V,h,col,alpha)=>{
@@ -1263,8 +1324,8 @@ function draw(){
   const st=niceStep(span/Math.max(1,pw/90));const dec=st%1000===0?0:st%100===0?1:st%10===0?2:3;
   for(let f=Math.ceil(view.a/st)*st;f<=view.b;f+=st){const x=X(f);g.fillRect(Math.round(x),bot,1,4);g.fillText((f/1000).toFixed(dec),x,bot+6);}
   g.textAlign="right";g.textBaseline="middle";
-  if(S.f.length)for(let l=-120;l<=-20;l+=20){const y=yL(l);g.fillText(String(l),PADL-6,y);}
-  g.save();g.translate(11,PADT+ph/2);g.rotate(-Math.PI/2);g.textAlign="center";g.fillText(S.f.length?"dBm":"",0,0);g.restore();
+  if(A.length)for(let l=-120;l<=-20;l+=20){const y=yL(l);g.fillText(String(l),PADL-6,y);}
+  g.save();g.translate(11,PADT+ph/2);g.rotate(-Math.PI/2);g.textAlign="center";g.fillText(A.length?"dBm":"",0,0);g.restore();
   updFreqBar();
 }
 let cursorF=null,carDrag=null,hoverSrc=new Set();
@@ -1691,17 +1752,13 @@ $("#lvThr").addEventListener("change",e=>setThr(parseFloat(e.target.value)));
 $("#lvMax").addEventListener("change",e=>{state.live.maxOn=e.target.checked;save();drawLive();});
 $("#lvAvg").addEventListener("change",e=>{state.live.avgOn=e.target.checked;save();drawLive();});
 $("#lvReset").addEventListener("click",()=>{if(live.l)live.max=Float32Array.from(live.l);drawLive();});
-/* Captura de escaneo: se queda con el máximo de cada punto durante unos segundos y lo funde con el escaneo que ya hubiera
-   (solo se sustituye la parte del espectro que cubre la captura). Activa «evitar» y propone un umbral sobre el ruido. */
+/* Captura de escaneo: se queda con el máximo de cada punto durante unos segundos y lo guarda como un escaneo más de la lista
+   (marcado, para coordinar con la suma de los marcados). Activa «evitar» y, si es el primero, propone los umbrales sobre el ruido. */
 let cap=null;
 function medianOf(a){const b=Float32Array.from(a).sort();return b.length?b[b.length>>1]:-100;}
 function applyCapture(F,L,label){
-  const S=state.scan,had=S.f.length>0,f0=F[0],f1=F[F.length-1];
-  const nf=[],nl=[];
-  for(let i=0;i<S.f.length;i++)if(S.f[i]<f0||S.f[i]>f1){nf.push(S.f[i]);nl.push(S.l[i]);}
-  for(let i=0;i<F.length;i++){nf.push(Math.round(F[i]));nl.push(Math.round(L[i]*10)/10);}
-  const idx=nf.map((_,i)=>i).sort((a,b)=>nf[a]-nf[b]);
-  S.f=idx.map(i=>nf[i]);S.l=idx.map(i=>nl[i]);S.name=label;
+  const S=state.scan,had=state.scans.length>0,f0=F[0],f1=F[F.length-1];
+  addScan(label,Array.from(F,x=>Math.round(x)),Array.from(L,x=>Math.round(x*10)/10));
   const floor=medianOf(L),sug=Math.max(-110,Math.min(-40,Math.round(floor+10)));
   if(!had){S.threshold=sug;S.peak=Math.min(-30,sug+30);}
   if(S.peak<S.threshold)S.peak=S.threshold;
@@ -1710,8 +1767,8 @@ function applyCapture(F,L,label){
   for(let i=0;i<L.length;i++){const hi=L[i]>S.threshold;if(hi&&!above)zones++;above=hi;}
   syncScanThr();$("#scanOn").checked=true;
   save();renderScanInfo();analyzeNow();renderTable();
-  toast(`Escaneo guardado (${fmt(f0)}–${fmt(f1)} MHz): ruido hacia ${Math.round(floor)} dBm, umbral de exclusión ${S.threshold} dBm y de pico ${S.peak} dBm, `+
-    `${zones?`${zones} zona${zones>1?"s":""} ocupada${zones>1?"s":""}`:"ninguna zona ocupada"}. La coordinación ya evita lo que los supera.`);
+  toast(`Escaneo añadido (${fmt(f0)}–${fmt(f1)} MHz): ruido hacia ${Math.round(floor)} dBm`+(had?`, ${zones?`${zones} zona${zones>1?"s":""} ocupada${zones>1?"s":""}`:"ninguna zona ocupada"}.`:`, umbral de exclusión ${S.threshold} dBm y de pico ${S.peak} dBm, `+
+    `${zones?`${zones} zona${zones>1?"s":""} ocupada${zones>1?"s":""}`:"ninguna zona ocupada"}. La coordinación ya evita lo que los supera.`)+(had?" Márcalo en la lista de escaneos para usarlo.":""));
   return {zones,floor,threshold:S.threshold};
 }
 function capFinish(){
@@ -2338,7 +2395,7 @@ function buildReport(){
       return `<tr><td>${i+1}</td><td>${esc(e.name||"")}</td><td class="f">${e.f!=null?fmt(e.f):"—"}</td><td>${e.locked?"Sí":""}</td><td>${stt}</td><td>${rxs(e)}</td></tr>`;}).join("");
     return `<h3 style="border-left:6px solid ${esc(g.color)}">${esc(g.name)} <small>${esc(info)}${esc(segsText(g.segs))}, paso ${g.step} kHz</small></h3>
       <table><thead><tr><th>Canal</th><th>Nombre</th><th>Frecuencia (MHz)</th><th>Fija</th><th>Estado</th><th>Receptor</th></tr></thead><tbody>${trs}</tbody></table>`;}).join("");
-  const sc=state.scan&&state.scan.f&&state.scan.f.length?`${esc(state.scan.name||"escaneo cargado")}, exclusión ${state.scan.threshold} dBm, pico ${state.scan.peak} dBm (protección ${state.scan.protect} kHz), ${state.scan.enabled?"se evita":"no se tiene en cuenta"}`:"ninguno";
+  const sc=activeScans().length?`${activeScans().map(s=>esc(s.name)).join(" + ")}, exclusión ${state.scan.threshold} dBm, pico ${state.scan.peak} dBm (protección ${state.scan.protect} kHz), ${state.scan.enabled?"se evita":"no se tiene en cuenta"}`:"ninguno";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(name)}: coordinación de frecuencias</title><style>
   body{font:14px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#1b2531;max-width:900px;margin:24px auto;padding:0 18px}
   h1{font-size:26px;margin:0 0 2px}h2{font-size:17px;margin:26px 0 8px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{font-size:15px;margin:18px 0 6px;padding-left:8px}

@@ -63,8 +63,11 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   *Asignar a receptores* enlaza canales virtuales con canales libres compatibles; *Enviar a receptores* programa las frecuencias y después
   vuelve a leer cada canal: la tabla marca *Verificado en el receptor* o *No confirmado* (con la frecuencia real), y los fallos entran en el registro de alarmas.
 - **Espectro en vivo:** RF Explorer, tinySA (USB), simulador y Shure AD600 (red). *Capturar como escaneo* guarda lo que ve el analizador
-  (el barrido actual o el máximo de 10 s a 2 min) como escaneo del sitio: se funde con el que hubiera (solo sustituye la parte
-  capturada), activa «evitar» y propone un umbral por encima del ruido. La coordinación evita desde ese momento lo que lo supere.
+  (el barrido actual o el máximo de 10 s a 2 min) como un escaneo más de la lista de *Coordinación → Escaneos*
+  (marcado), activa «evitar» y, si es el primero, propone los umbrales por encima del ruido.
+- **Varios escaneos:** en *Coordinación → Escaneos* se añaden uno o varios archivos CSV/TXT y las capturas del analizador. Cada uno tiene su casilla, su color y su botón de quitar; se coordina con la **suma**
+  (el máximo en cada frecuencia) de los marcados y la gráfica los dibuja **por separado**, cada uno con su color, con las líneas de los dos umbrales. Los picos de escaneos distintos a menos de 100 kHz cuentan como uno.
+  Los proyectos antiguos con un solo escaneo lo conservan en la lista.
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).
 
 ## Firma estable (Mac, opcional)
