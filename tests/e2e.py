@@ -991,9 +991,31 @@ def t_umbrales(B):
         pg.fill("#scanTh", "-85"); pg.press("#scanTh", "Tab"); pg.fill("#scanPeak", "-60"); pg.press("#scanPeak", "Tab")
         info = pg.inner_text("#scanInfo")
         check("el panel cuenta los picos", "1 pico" in info, info)
+        # picos como emisores en la intermodulación (como WWB) o solo protección
+        pg.evaluate("()=>{state.scan.protect=800;state.scan.mode='imd';}")
+        r = pg.evaluate("""()=>{
+          const out={};
+          state.groups=[mkGroup("A",1,470000,694000,25,"analog",0),mkGroup("B",1,470000,694000,25,"analog",1)];
+          state.groups[0].freqs[0]={f:563850,locked:true};state.groups[1].freqs[0]={f:562150,locked:true};
+          state.scan.mode="imd";analyzeNow();out.imd=analysis.C[1].issues.filter(s=>s.includes("pico"));out.fuentes=peakSources().length;
+          state.scan.mode="prot";analyzeNow();out.prot=analysis.C[1].issues.filter(s=>s.includes("IMD"));out.fuentesProt=peakSources().length;
+          state.scan.mode="imd";return out;}""")
+        check("modo WWB: el producto 2×pico − otra frecuencia cae sobre una coordinada y se avisa", len(r["imd"]) == 1 and "2×pico" in r["imd"][0] and r["fuentes"] == 1, r)
+        check("modo «solo protección»: los picos no entran en la intermodulación", r["prot"] == [] and r["fuentesProt"] == 0, r)
+        r = pg.evaluate("""async()=>{
+          state.groups=[mkGroup("A",4,470000,694000,25,"analog",0),mkGroup("B",4,470000,694000,25,"analog",1)];
+          for(const g of state.groups)g.freqs=g.freqs.map(()=>({f:null,locked:false}));
+          const F=[],L=[];for(let f=560000;f<=566000;f+=25){F.push(f);L.push(-105);}
+          for(const p of [561000,563000,565000])L[F.indexOf(p)]=-40;
+          state.scan={f:F,l:L,name:"tres picos",threshold:-85,peak:-60,protect:800,mode:"imd",enabled:true};
+          state.opts.pmse=false;
+          await coordinate();
+          const fr=analysis.C.map(c=>c.f);
+          return {n:fr.length,bad:analysis.bad,iss:analysis.C.flatMap(c=>c.issues),lejos:fr.every(f=>[561000,563000,565000].every(p=>Math.abs(f-p)>=800)||f<560000||f>566000)};}""")
+        check("coordinar con picos como emisores coloca todo sin problemas y fuera de sus zonas", r["n"] == 8 and r["bad"] == 0 and r["lejos"], r)
         # guardado y recuperación
-        r = pg.evaluate("()=>{const n=normalize(JSON.parse(JSON.stringify(exportState())));const v=normalize({groups:[],scan:{threshold:-80}});return [n.scan.peak,n.scan.protect,v.scan.peak,v.scan.protect]}")
-        check("se guardan con el proyecto y los proyectos antiguos reciben los valores por defecto", r == [-60, 400, -60, 800], r)
+        r = pg.evaluate("()=>{const n=normalize(JSON.parse(JSON.stringify(exportState())));const v=normalize({groups:[],scan:{threshold:-80}});return [n.scan.peak,n.scan.protect,v.scan.peak,v.scan.protect,v.scan.mode,n.scan.mode]}")
+        check("se guardan con el proyecto y los proyectos antiguos reciben los valores por defecto (picos como WWB)", r == [-60, 800, -60, 800, "imd", "imd"], r)
         ctx.close()
 
 
