@@ -779,7 +779,7 @@ def t_menu_proyecto(B):
             return "a;b" if "menuTexto" in code else None
         def create_file_dialog(self, *a, **k):
             return [dlg_file[0]]
-    wv = types.SimpleNamespace(windows=[W()], FileDialog=types.SimpleNamespace(OPEN=1))
+    wv = types.SimpleNamespace(windows=[W()], FileDialog=types.SimpleNamespace(OPEN=1, SAVE=2))
     class Menu:
         def __init__(self, title, items): self.title, self.items = title, items
     class Action:
