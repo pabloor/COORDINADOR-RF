@@ -6,6 +6,12 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.24**
+- **Varios escaneos:** en *Coordinación → Escaneos* se añaden uno o varios archivos y las capturas del analizador; cada uno tiene su casilla, su color y su botón de quitar. Se coordina con la **suma** de los marcados y la gráfica los dibuja **por separado**. *Capturar como escaneo* añade ahora un escaneo nuevo en vez de fundirse con el anterior.
+- **Picos del escaneo como emisores en la intermodulación, como Wireless Workbench:** los 40 picos más fuertes cuentan en el cálculo, con un selector para dejar solo la protección alrededor de cada pico.
+- **Exportar para Wireless Workbench:** *Proyecto → Exportar para Wireless Workbench…* guarda el proyecto como un show `.shw` con equipos, frecuencias, nombres de canal, reglas de separación, exclusiones y umbrales del escaneo. Solo los grupos de Shure que WWB conoce; el resto se avisa y se deja fuera.
+- **Bandas de WWB:** SLX banda JB y ULX banda K2E con los valores de las listas de su serie.
+
 **Novedades de la 1.23**
 - **Doble umbral del escaneo, como en Wireless Workbench:** el *umbral de exclusión* (lo que se considera ruido demasiado alto) y el nuevo *umbral de pico*, que trata las señales fuertes del escaneo como emisores activos y las protege con una separación mínima configurable (800 kHz por defecto). *Capturar como escaneo* propone los dos y la importación de un `.shw` de WWB trae los suyos.
 - **Monitor:** se quita el desplegable de batería baja; el aviso queda fijo en el 20 % (1 barra en los equipos que dan barras).
