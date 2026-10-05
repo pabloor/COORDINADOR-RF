@@ -1054,10 +1054,14 @@ def t_exportar_wwb(B):
               and root.find("coordinated_data_root/compatibility_profile_settings").get("count") == "2")
         check("umbrales de exclusión y de pico del escaneo", root.findtext("coordination_info/scan_data/threshold") == "-88" and root.findtext("coordination_info/scan_data/higher_threshold") == "-58")
         check("el nombre se escapa y la lista de canales monitorizados lista todos", root.findtext("show_properties/show_info/name") == "Gira <2026>" and len(root.findtext("monitoring_info/channel_order").split(";")) == 5)
+        nm = [(c.findtext("channel_name")) for d in devs for c in d.findall("channel")]
+        check("nombres de canal para WWB: el propio (hasta 8 caracteres) o el número del canal", "Voz & co" in nm and "02" in nm and "03" in nm and all(len(n) <= 8 for n in nm), nm)
+        r3 = pg.evaluate("()=>[shwChName('AD4D-A 01','AD4D-A','AD4D-A'),shwChName('P10T 07','P10T','PSM1000'),shwChName('Voz principal','AD4D-A','AD4D-A'),shwChName('Voz 2','P10T','PSM1000'),shwChName('PSM1000 3','P10T','PSM1000')]")
+        check("«AD4D-A 01» → «01», «P10T 07» → «07», los nombres propios se respetan (hasta 8)", r3 == ["01", "07", "Voz prin", "Voz 2", "3"], r3)
         # ida y vuelta: lo que se exporta se vuelve a importar igual
         back = pg.evaluate("""(x)=>{const p=shwParse(x);return {name:p.name,groups:p.groups.map(g=>({s:g.series,b:g.band,f:g.freqs.map(e=>e.f),r:g.rules,n:g.freqs.map(e=>e.name)})),excl:p.excl,scan:p.scan}}""", r["text"])
         gs = {(g["s"], g["b"]): g for g in back["groups"]}
-        check("ida y vuelta: grupos, frecuencias y nombres", gs[("AD", "G56")]["f"] == [583125, 585650, 587000] and gs[("PSM1000", "G10E")]["f"] == [486750, 509150] and gs[("AD", "G56")]["n"][0] == "Voz & coros", back["groups"])
+        check("ida y vuelta: grupos, frecuencias y nombres", gs[("AD", "G56")]["f"] == [583125, 585650, 587000] and gs[("PSM1000", "G10E")]["f"] == [486750, 509150] and gs[("AD", "G56")]["n"][0] == "Voz & co", back["groups"])
         check("ida y vuelta: reglas, exclusiones y umbrales", gs[("AD", "G56")]["r"]["cc"] > 0 and sorted(map(str, back["excl"])) == sorted(["610250", "600100,600400"]) or back["excl"] == [610250, [600100, 600400]] or sorted(back["excl"], key=str) == sorted([610250, [600100, 600400]], key=str), back["excl"])
         check("ida y vuelta: umbrales del escaneo", back["scan"] == {"threshold": -88, "peak": -58} and back["name"] == "Gira <2026>", back["scan"])
         # sin nada exportable

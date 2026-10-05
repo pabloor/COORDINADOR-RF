@@ -2731,6 +2731,12 @@ function shwGuid(seed){
   for(let r=0;r<4;r++){for(let i=0;i<seed.length;i++){h^=seed.charCodeAt(i)+r;h=Math.imul(h,16777619)>>>0;}o+=h.toString(16).padStart(8,"0");}
   return `${o.slice(0,8)}-${o.slice(8,12)}-${o.slice(12,16)}-${o.slice(16,20)}-${o.slice(20,32)}`;
 }
+/* Nombre de canal para WWB: sin el nombre del equipo delante (la importación lo añade: «AD4D-A 01» → «01») y de 8 caracteres como máximo, que es lo que admiten los equipos. */
+function shwChName(n,dev,alias){
+  n=String(n||"").trim();
+  for(const p of [dev,alias])if(p&&n.startsWith(p+" ")&&n.length>p.length+1)n=n.slice(p.length+1).trim();
+  return n.slice(0,8);
+}
 const hexColor=c=>/^#[0-9a-f]{6}$/i.test(c)?c.toLowerCase():"#585858";
 function shwFields(tpl,ov,ind){
   return tpl.map(([t,ty,v])=>{
@@ -2756,14 +2762,15 @@ function shwBuild(st,projName){
     const key=series+"|"+g.model.band;
     if(!profiles.has(key))profiles.set(key,{series,band:g.model.band,rules:ruleOf(g),order:100000+profiles.size*1000});
     const ms=libBand(libSeries(g.model.series),g.model.band),lo=ms?Math.min(...ms.segs.map(s=>s[0])):0,hi=ms?Math.max(...ms.segs.map(s=>s[1])):0;
+    const nameOf=x=>x.e.name&&x.e.name.trim()?shwChName(x.e.name,row[2],row[1]):String(x.i+1).padStart(2,"0");   // sin nombre propio: el número de canal, como los de WWB
     for(let k=0;k<fr.length;k+=tab.n){
       seq++;
       const mac="000eddfe"+seq.toString(16).padStart(4,"0"),id=(mac.slice(4)).toUpperCase()+"-0000-11DD-A000-000EDDCCCCCC";
       const d={id,series,model:row[1],name:row[2],band:g.model.band,dcid:row[0],mac,pid:"CRF"+String(seq).padStart(6,"0"),ip:String(2852000000+seq),lo,hi,color:g.color,chans:[]};
       for(let c=0;c<tab.n;c++){
         const x=fr[k+c];
-        d.chans.push(x?{f:x.e.f,name:chName(g,x.i)}:{f:0,name:""});
-        if(x)entries.push({id:id+"-"+c,series,band:g.model.band,f:x.e.f,color:hexColor(g.color),model:row[1],cname:chName(g,x.i),order:profiles.get(key).order});
+        d.chans.push(x?{f:x.e.f,name:nameOf(x)}:{f:0,name:""});
+        if(x)entries.push({id:id+"-"+c,series,band:g.model.band,f:x.e.f,color:hexColor(g.color),model:row[1],cname:nameOf(x),order:profiles.get(key).order});
       }
       devs.push(d);
     }
