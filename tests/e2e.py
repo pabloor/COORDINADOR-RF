@@ -774,6 +774,8 @@ def t_menu_proyecto(B):
     class W:
         def evaluate_js(self, code):
             calls.append(code)
+            if "menuShwExport" in code:
+                return {"ok": True, "text": "<show/>\n", "name": "Mi gira.shw", "msg": "Exportado."}
             return "a;b" if "menuTexto" in code else None
         def create_file_dialog(self, *a, **k):
             return [dlg_file[0]]
@@ -787,7 +789,7 @@ def t_menu_proyecto(B):
     pr.copy_clipboard = lambda t: copied.append(t) or True
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
-    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 13 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 14 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
     info = {"CFBundleShortVersionString": "0.0.0", "CFBundleVersion": "0.0.0"}
     pr.apply_bundle_info(info)
     check("«Acerca de» muestra el nombre y la versión de la app (no 0.0.0)", info["CFBundleName"] == "Coordinador RF" and info["CFBundleShortVersionString"] == pr.VERSION and info["CFBundleVersion"] == pr.VERSION and pr.VERSION[0].isdigit(), info)
@@ -806,6 +808,10 @@ def t_menu_proyecto(B):
     check("el menú tiene «Importar show de Wireless Workbench…»", "Importar show de Wireless Workbench…" in acts)
     acts["Cargar archivo como proyecto nuevo…"]()
     check("cargar lee el archivo elegido y se lo pasa a la página", calls[-1].startswith('menuCargar("mi proyecto.json",') and '{\\"groups\\"' in calls[-1].replace('\\"', '\\\\"') or "groups" in calls[-1], calls[-1])
+    dlg_file[0] = os.path.join(_t.mkdtemp(), "salida")
+    check("el menú tiene «Exportar para Wireless Workbench…»", "Exportar para Wireless Workbench…" in acts)
+    acts["Exportar para Wireless Workbench…"]()
+    check("exportar guarda el show donde se elige, con extensión .shw, y avisa", os.path.exists(dlg_file[0] + ".shw") and open(dlg_file[0] + ".shw", encoding="utf-8").read() == "<show/>\n" and "toast(" in calls[-1] and "Exportado" in calls[-1], calls[-1])
 
 
 def t_interferencias(B):
@@ -1019,7 +1025,55 @@ def t_umbrales(B):
         ctx.close()
 
 
-BLOQUES = {"umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_exportar_wwb(B):
+    print("Exportar un proyecto a un show de Wireless Workbench")
+    import xml.etree.ElementTree as ET
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        r = pg.evaluate("""()=>{
+          const ad=mkModelGroup("shure-ad","G56",3,0),ps=mkModelGroup("shure-psm1000","G10E",2,1),sn=mkModelGroup("senn-iemg4","A",2,2),qx=mkModelGroup("shure-ulx","G3",1,3);
+          ad.freqs=[{f:583125,locked:true,name:"Voz & coros"},{f:585650,locked:false},{f:587000,locked:false}];
+          ps.freqs=[{f:486750,locked:true},{f:509150,locked:true}];
+          sn.freqs=[{f:520000,locked:true},{f:521000,locked:true}];qx.freqs=[{f:480000,locked:true}];
+          state.groups=[ad,ps,sn,qx];state.excl="610.25\\n600.1-600.4";
+          state.scan.threshold=-88;state.scan.peak=-58;
+          const r=shwBuild(state,"Gira <2026>");return {text:r.text,devices:r.devices,channels:r.channels,skipped:r.skipped};}""")
+        root = ET.fromstring(r["text"])
+        check("el show es XML válido con la raíz «show» de WWB 7.1", root.tag == "show" and root.get("appl_version") == "7.1.0.285", root.attrib)
+        check("hay un equipo por cada 2 canales (AD4D y P10T) y los grupos sin equivalente se dejan fuera con aviso", r["devices"] == 3 and r["channels"] == 5 and len(r["skipped"]) == 2, r["skipped"])
+        devs = root.findall("inventory/device")
+        ids = [d.findtext("id") for d in devs]
+        check("identificadores de equipo únicos y con el formato de WWB", len(set(ids)) == 3 and all(len(i) == 36 and i.endswith("-0000-11DD-A000-000EDDCCCCCC") for i in ids), ids)
+        check("equipos con su modelo, serie y banda de WWB", [(d.findtext("model"), d.findtext("series"), d.findtext("band")) for d in devs] == [("AD4D-A", "AD", "G56"), ("AD4D-A", "AD", "G56"), ("PSM1000", "PSM1000", "G10E")], [(d.findtext("model"), d.findtext("series")) for d in devs])
+        fe = root.findall("coordinated_data_root/mic_channels/freq_entry")
+        check("cada frecuencia coordinada apunta a un canal de un equipo del inventario", len(fe) == 5 and root.find("coordinated_data_root/mic_channels").get("count") == "5"
+              and all(e.get("id").rsplit("-", 1)[0] in ids for e in fe) and sorted(int(e.findtext("value")) for e in fe) == [486750, 509150, 583125, 585650, 587000], [e.get("id") for e in fe])
+        ch = {(d.findtext("id"), c.get("number")): c.findtext("frequency") for d in devs for c in d.findall("channel")}
+        check("las frecuencias del canal coinciden con las coordinadas y el hueco de un equipo queda en 0", sorted(ch.values()) == ["0", "486750", "509150", "583125", "585650", "587000"], sorted(ch.values()))
+        check("reglas de separación por serie y banda", {(p.findtext("series"), p.findtext("band")) for p in root.findall("coordinated_data_root/compatibility_profile_settings/profile")} == {("AD", "G56"), ("PSM1000", "G10E")}
+              and root.find("coordinated_data_root/compatibility_profile_settings").get("count") == "2")
+        check("umbrales de exclusión y de pico del escaneo", root.findtext("coordination_info/scan_data/threshold") == "-88" and root.findtext("coordination_info/scan_data/higher_threshold") == "-58")
+        check("el nombre se escapa y la lista de canales monitorizados lista todos", root.findtext("show_properties/show_info/name") == "Gira <2026>" and len(root.findtext("monitoring_info/channel_order").split(";")) == 5)
+        # ida y vuelta: lo que se exporta se vuelve a importar igual
+        back = pg.evaluate("""(x)=>{const p=shwParse(x);return {name:p.name,groups:p.groups.map(g=>({s:g.series,b:g.band,f:g.freqs.map(e=>e.f),r:g.rules,n:g.freqs.map(e=>e.name)})),excl:p.excl,scan:p.scan}}""", r["text"])
+        gs = {(g["s"], g["b"]): g for g in back["groups"]}
+        check("ida y vuelta: grupos, frecuencias y nombres", gs[("AD", "G56")]["f"] == [583125, 585650, 587000] and gs[("PSM1000", "G10E")]["f"] == [486750, 509150] and gs[("AD", "G56")]["n"][0] == "Voz & coros", back["groups"])
+        check("ida y vuelta: reglas, exclusiones y umbrales", gs[("AD", "G56")]["r"]["cc"] > 0 and sorted(map(str, back["excl"])) == sorted(["610250", "600100,600400"]) or back["excl"] == [610250, [600100, 600400]] or sorted(back["excl"], key=str) == sorted([610250, [600100, 600400]], key=str), back["excl"])
+        check("ida y vuelta: umbrales del escaneo", back["scan"] == {"threshold": -88, "peak": -58} and back["name"] == "Gira <2026>", back["scan"])
+        # sin nada exportable
+        r2 = pg.evaluate("()=>{state.groups=[mkModelGroup('senn-iemg4','A',2,0)];state.groups[0].freqs[0].f=520000;const r=menuShwExport();return r}")
+        check("si nada se puede exportar, avisa en vez de crear un archivo vacío", r2["ok"] is False and "No hay frecuencias" in r2["msg"], r2)
+        # el botón de la página descarga el archivo
+        pg.evaluate("""()=>{const ad=mkModelGroup("shure-ad","G56",1,0);ad.freqs=[{f:583125,locked:true}];state.groups=[ad];}""")
+        pg.click("#shwExport", timeout=5000) if False else None
+        with pg.expect_download(timeout=8000) as dl:
+            pg.evaluate("()=>shwDownload()")
+        d = dl.value
+        check("el botón descarga un archivo .shw", d.suggested_filename.endswith(".shw"), d.suggested_filename)
+        ctx.close()
+
+
+BLOQUES = {"exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

@@ -12,7 +12,7 @@ from webview.menu import Menu, MenuAction, MenuSeparator
 menu = pr.project_menu()
 assert len(menu) == 1 and isinstance(menu[0], Menu) and menu[0].title == "Proyecto", menu
 acciones = [i for i in menu[0].items if isinstance(i, MenuAction)]
-assert len(acciones) == 13 and all(callable(a.function) for a in acciones), acciones
+assert len(acciones) == 14 and all(callable(a.function) for a in acciones), acciones
 assert any(isinstance(i, MenuSeparator) for i in menu[0].items)
 assert "menu" in inspect.signature(webview.start).parameters, "esta versión de pywebview no admite menús"
 assert "js_api" in inspect.signature(webview.create_window).parameters

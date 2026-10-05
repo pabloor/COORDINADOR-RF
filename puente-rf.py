@@ -1934,6 +1934,30 @@ def project_menu(webview_module=None, menu_module=None):
             js(f"{funcion}({json.dumps(os.path.basename(path))},{json.dumps(text)})")
         return f
 
+    def exportar_wwb():
+        """El menú pide a la página el show de Wireless Workbench y lo guarda donde elija el usuario."""
+        if not wv.windows:
+            return
+        res = js("menuShwExport()")
+        if not isinstance(res, dict) or not res.get("ok"):
+            js(f"toast({json.dumps((res or {}).get('msg') if isinstance(res, dict) else 'No se ha podido exportar.')})")
+            return
+        dialog = wv.FileDialog.SAVE if hasattr(wv, "FileDialog") else wv.SAVE_DIALOG
+        dest = wv.windows[0].create_file_dialog(dialog, save_filename=res.get("name") or "Coordinador RF.shw",
+                                                file_types=("Show de Wireless Workbench (*.shw)",))
+        if not dest:
+            return
+        path = dest[0] if isinstance(dest, (list, tuple)) else dest
+        if not str(path).lower().endswith(".shw"):
+            path = str(path) + ".shw"
+        try:
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(res["text"])
+        except OSError as e:
+            js(f"toast({json.dumps('No se ha podido guardar el archivo: ' + str(e))})")
+            return
+        js(f"toast({json.dumps(res.get('msg', 'Exportado.'))})")
+
     cargar = abrir("Proyectos (*.json;*.txt)", "menuCargar")
     importar_wwb = abrir("Show de Wireless Workbench (*.shw;*.xml)", "menuShw")
 
@@ -1949,6 +1973,7 @@ def project_menu(webview_module=None, menu_module=None):
         Action("Abrir carpeta de proyectos", acc("carpeta")),
         Action("Cargar archivo como proyecto nuevo…", cargar),
         Action("Importar show de Wireless Workbench…", importar_wwb),
+        Action("Exportar para Wireless Workbench…", exportar_wwb),
         Action("Pegar proyecto copiado…", acc("pegar")),
         Sep(),
         Action("Informe imprimible / PDF…", acc("informe")),

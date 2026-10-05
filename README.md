@@ -33,6 +33,10 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
   seleccionada. Pasando el ratón por la franja inferior (donde se dibujan los productos de intermodulación) un cuadro indica qué
   portadoras producen cada producto y se resaltan en la gráfica. Las líneas de las portadoras se **arrastran con el ratón** (pasos de 25 kHz; con ⇧ de 5 kHz): la frecuencia queda
   bloqueada, la intermodulación se recalcula al momento y *deshacer* devuelve la línea de una vez. Arrastrar el fondo desplaza la vista. *Ajustar vista* (o doble clic en la gráfica) encuadra las portadoras coordinadas; al repetirlo muestra las bandas enteras.
+- **Exportar para Wireless Workbench:** *Proyecto → Exportar para Wireless Workbench…* (en el navegador, el botón del panel) guarda el proyecto como un show `.shw` con la estructura de uno real de WWB 7.1: un equipo
+  de inventario por cada 2 canales (AD4D, P10T…; 1 en QLX-D, SLX-D5 y AXT400) con su modelo y banda de WWB, las frecuencias coordinadas por canal con su nombre, las reglas de separación de cada serie y banda, las exclusiones y los umbrales
+  del escaneo. Solo valen los grupos de Shure que WWB conoce (AD, ULX-D, QLX-D, SLX-D, SLX-D5, PSM 1000, AD-PSM, AXT y UHF-R); el resto se deja fuera y la app lo avisa. Los equipos de Axient Digital y PSM 1000 usan plantillas
+  de un show real; los demás, un equipo mínimo (experimental). Los datos de red de los equipos son de relleno.
 - **Doble umbral del escaneo (como en WWB):** el *umbral de exclusión* marca lo que se considera ruido demasiado alto (lo que lo supera se evita en su propia frecuencia, como antes) y el *umbral de pico* identifica emisores activos:
   cada tramo del escaneo por encima de él es un pico y se protege con una separación mínima configurable (800 kHz por defecto, el valor del perfil genérico de WWB). Lo que queda entre los dos umbrales solo se evita en su
   frecuencia, y por debajo del de exclusión se desprecia. Con *Picos del escaneo → Protección e intermodulación* (por defecto, como WWB) los 40 picos más fuertes cuentan además como emisores en el cálculo de
@@ -43,7 +47,7 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
 - **Nombre por canal**, deshacer/rehacer (⌘Z, ⇧⌘Z) y **informe imprimible o PDF** (menú *Proyecto → Informe imprimible / PDF*: se abre en el navegador del
   sistema; desde ahí, Imprimir → Guardar como PDF).
 - **Varios proyectos** con nombre. En la app de Mac todo lo de proyectos está en la barra de menús, en **Proyecto** (cambiar, nuevo, duplicar,
-  renombrar, borrar, vaciar, abrir la carpeta, cargar archivo, importar de Wireless Workbench, pegar, copiar lista CSV y copiar proyecto) y el nombre del proyecto actual va en
+  renombrar, borrar, vaciar, abrir la carpeta, cargar archivo, importar de Wireless Workbench, exportar para Wireless Workbench, pegar, copiar lista CSV y copiar proyecto) y el nombre del proyecto actual va en
   el título de la ventana; en el navegador siguen el selector de la cabecera y la sección Proyecto del panel. Se guardan en la app y, con el puente conectado, como archivos en
   `Documentos/Coordinador RF/Proyectos`, de donde se recuperan si se pierden los datos de la app. Informes y registros van a
   `Documentos/Coordinador RF/Informes` y `Registros`.
