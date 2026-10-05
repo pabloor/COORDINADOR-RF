@@ -677,7 +677,7 @@ def t_shure_axient(B):
         check("ya no queda el aviso de formato no reconocido", "raw" not in c1 and "raw" not in c2)
         pg.evaluate("()=>{state.groups[0].freqs[0].f=530000;state.groups[0].freqs[0].locked=true;save();analyzeNow()}")
         pg.click('[data-tab="mon"]')
-        pg.wait_for_selector(".tile .rx .leds", timeout=8000)
+        pg.wait_for_selector(".tile .rx .ants", timeout=8000)
         m = pg.evaluate("""()=>{const rx=document.querySelector('.tile .rx');const L=[...rx.querySelectorAll('.leds')];
             const col=l=>{const i=l.querySelector('i.on');return i?getComputedStyle(i).backgroundColor:null};
             return {n:L.map(l=>l.children.length),on:L.map(l=>l.querySelectorAll('i.on').length),cols:L.map(col),bar:!!rx.querySelector('.meter'),txt:rx.innerText}}""")
