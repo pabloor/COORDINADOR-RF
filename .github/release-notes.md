@@ -6,6 +6,9 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.25**
+- **Escaneos:** el selector «Picos del escaneo» se llama ahora «Protección e intermodulación» o «Solo protección», y su texto explicativo ya no menciona Wireless Workbench.
+
 **Novedades de la 1.24**
 - **Varios escaneos:** en *Coordinación → Escaneos* se añaden uno o varios archivos y las capturas del analizador; cada uno tiene su casilla, su color y su botón de quitar. Se coordina con la **suma** de los marcados y la gráfica los dibuja **por separado**. *Capturar como escaneo* añade ahora un escaneo nuevo en vez de fundirse con el anterior.
 - **Picos del escaneo como emisores en la intermodulación, como Wireless Workbench:** los 40 picos más fuertes cuentan en el cálculo, con un selector para dejar solo la protección alrededor de cada pico.
