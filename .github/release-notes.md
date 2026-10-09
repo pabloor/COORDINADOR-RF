@@ -6,6 +6,10 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.27**
+- **Captura por tramos (más puntos):** en *Espectro en vivo*, «Resolución» Alta (≈ 50 kHz entre puntos) o Máxima (≈ 25 kHz) reparte el rango en tramos seguidos, barre cada uno con todos los puntos del analizador y los une en un solo escaneo (hasta 60 tramos). Se puede cancelar y guarda lo hecho. Con el AD600 baja la resolución a 50 kHz mientras captura.
+- **Buscar actualizaciones** a mano: en el menú con el nombre de la app (Mac), debajo de «Acerca de». Responde siempre: versión nueva, al día o error de conexión.
+
 **Novedades de la 1.26**
 - **Perfil del equipo lado a lado:** el botón de perfil de cada grupo muestra una tabla con los modos Robusto, Medio y Cantidad a la vez (separaciones entre canales y de intermodulación) y permite elegir un modo desde ella.
 - **Guardar la gráfica como imagen:** botón de imagen junto a la gráfica; guarda un PNG con cabecera en *Documentos/Coordinador RF/Imágenes*.
