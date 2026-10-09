@@ -1992,6 +1992,7 @@ def project_menu(webview_module=None, menu_module=None):
         Action("Exportar para Wireless Workbench…", exportar_wwb),
         Action("Pegar proyecto copiado…", acc("pegar")),
         Sep(),
+        Action("Revisar proyecto…", acc("revisar")),
         Action("Informe imprimible / PDF…", acc("informe")),
         Action("Copiar lista de frecuencias (CSV)", copiar("csv", "Lista copiada. Pégala en una hoja de cálculo.")),
         Action("Copiar proyecto", copiar("proyecto", "Proyecto copiado. Guárdalo en un archivo .json para cargarlo después.")),

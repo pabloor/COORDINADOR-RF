@@ -788,7 +788,7 @@ def t_menu_proyecto(B):
     pr.copy_clipboard = lambda t: copied.append(t) or True
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
-    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 14 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 15 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
     info = {"CFBundleShortVersionString": "0.0.0", "CFBundleVersion": "0.0.0"}
     pr.apply_bundle_info(info)
     check("«Acerca de» muestra el nombre y la versión de la app (no 0.0.0)", info["CFBundleName"] == "Coordinador RF" and info["CFBundleShortVersionString"] == pr.VERSION and info["CFBundleVersion"] == pr.VERSION and pr.VERSION[0].isdigit(), info)
@@ -809,6 +809,8 @@ def t_menu_proyecto(B):
     check("cargar lee el archivo elegido y se lo pasa a la página", calls[-1].startswith('menuCargar("mi proyecto.json",') and '{\\"groups\\"' in calls[-1].replace('\\"', '\\\\"') or "groups" in calls[-1], calls[-1])
     dlg_file[0] = os.path.join(_t.mkdtemp(), "salida")
     check("el menú tiene «Exportar para Wireless Workbench…»", "Exportar para Wireless Workbench…" in acts)
+    acts["Revisar proyecto…"]()
+    check("«Revisar proyecto…» llama a su función de la página", calls[-1] == 'menuProyecto("revisar")', calls[-1])
     acts["Exportar para Wireless Workbench…"]()
     check("exportar guarda el show donde se elige, con extensión .shw, y avisa", os.path.exists(dlg_file[0] + ".shw") and open(dlg_file[0] + ".shw", encoding="utf-8").read() == "<show/>\n" and "toast(" in calls[-1] and "Exportado" in calls[-1], calls[-1])
 
@@ -1235,7 +1237,53 @@ def t_perfil(B):
         ctx.close()
 
 
-BLOQUES = {"perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_revisar(B):
+    print("Revisar proyecto")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        pg.evaluate("""()=>{
+          const g=mkGroup("Micros",4,470000,694000,25,"analog",0);
+          g.freqs=[{f:563000,locked:true,rx:{d:"d1",c:"1"}},{f:563100,locked:false},{f:null,locked:false},{f:500000,locked:true}];
+          state.groups=[g];state.tv=[];state.scans=[];state.excl="";
+          net.snap={devices:[{id:"d1",name:"AD4D",channels:{"1":{freq:570000}}}],bridge:"x"};
+          save();renderGroups();analyzeNow();renderTable();}""")
+        pg.click("#hcBtn")
+        pg.wait_for_selector("#hcModal:not([hidden])")
+        sm = pg.inner_text("#hcBody .hcsum")
+        check("el resumen cuenta asignadas, problemas y avisos", "3/4" in sm and "Con problemas" in sm, sm)
+        items = pg.evaluate("()=>[...document.querySelectorAll('#hcBody .hcl li')].map(l=>[l.className,l.querySelector('.tt').textContent,l.querySelector('.dd')?l.querySelector('.dd').textContent:''])")
+        sev = [i[0] for i in items]
+        check("primero los problemas, luego los avisos y al final las notas", sev == sorted(sev, key=lambda s: {"bad": 0, "warn": 1, "info": 2}[s]) and "bad" in sev and "warn" in sev and "info" in sev, sev)
+        txt = " | ".join(" ".join(i) for i in items)
+        check("avisa de dos frecuencias demasiado cerca", "Demasiado cerca" in txt, txt)
+        check("avisa del canal sin frecuencia", "sin frecuencia" in txt, txt)
+        check("avisa del receptor sin enviar con las dos frecuencias", "sin enviar al receptor" in txt and "570" in txt and "563" in txt, txt)
+        check("avisa de que no hay escaneos ni canales de TV ni frecuencias sin bloquear", "Sin escaneos" in txt and "Sin canales de TV" in txt and "sin bloquear" in txt, txt)
+        # ir a un problema
+        pg.click('#hcBody li.bad[data-k] >> nth=0')
+        r = pg.evaluate("()=>[document.getElementById('hcModal').hidden,selected,view.b-view.a]")
+        check("pulsar un problema cierra la ventana, selecciona el canal y acerca la vista", r[0] is True and r[1] and abs(r[2] - 6000) < 1, r)
+        # copiar: el texto resumen
+        t = pg.evaluate("()=>hcText(healthReport())")
+        check("el resumen en texto lleva el recuento y cada punto", "Frecuencias: 3 de 4 asignadas" in t and "[Problema]" in t and "[Aviso]" in t, t[:200])
+        # todo en orden
+        pg.evaluate("""()=>{const g=mkGroup("Micros",2,470000,694000,25,"analog",0);g.freqs=[{f:520000,locked:true},{f:600000,locked:true}];
+          state.groups=[g];state.tv=[22];state.scans=[{id:"a",name:"E",f:[500000,500025],l:[-100,-100],on:true,color:"#2f7896"}];state.scan.enabled=true;
+          net.snap=null;save();renderGroups();analyzeNow();renderTable();}""")
+        pg.click("#hcBtn")
+        pg.wait_for_selector("#hcModal:not([hidden])")
+        ok = pg.inner_text("#hcBody")
+        check("sin problemas ni avisos dice «Todo en orden»", "Todo en orden" in ok and pg.locator("#hcBody li.bad").count() == 0 and pg.locator("#hcBody li.warn").count() == 0, ok)
+        pg.keyboard.press("Escape")
+        check("Escape cierra la ventana", pg.evaluate("()=>document.getElementById('hcModal').hidden"))
+        # desde el menú de Mac
+        r = pg.evaluate("()=>{menuProyecto('revisar');return !document.getElementById('hcModal').hidden}")
+        check("la acción «revisar» del menú abre la revisión", r)
+        ctx.close()
+
+
+BLOQUES = {"revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

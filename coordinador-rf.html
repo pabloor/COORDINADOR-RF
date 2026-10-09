@@ -186,6 +186,13 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .nettab input,.nettab select{width:100%}
 .tile .rx{border-top:1px dashed var(--line);margin-top:6px;padding-top:6px;font-size:12.5px}
 .tile .rx:empty{display:none}
+.hcl{list-style:none;margin:0;padding:0}
+.hcl li{display:flex;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line)}
+.hcl li[data-k]{cursor:pointer}.hcl li[data-k]:hover{background:rgba(47,125,209,.08)}
+.hcl .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--muted)}
+.hcl .bad .dot{background:var(--im3)}.hcl .warn .dot{background:var(--im5)}.hcl .ok .dot{background:#2e9e5b}
+.hcl .tt{font-weight:600}.hcl .dd{color:var(--muted);font-size:12.5px;margin-top:2px}
+.hcsum{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 10px;font-size:14px}
 .proft{border-collapse:collapse;width:100%;font-size:13px}
 .proft th,.proft td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 .proft th:first-child,.proft td:first-child{text-align:left;color:var(--muted)}
@@ -368,6 +375,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
   <div class="table-wrap">
     <div class="tbar">
       <h2>Frecuencias</h2>
+      <button class="btn small" id="hcBtn" title="Revisa todo el proyecto: problemas por canal, canales sin asignar, receptores sin enviar y avisos generales">Revisar proyecto</button>
       <button class="btn small icon" id="lockAll" aria-label="Bloquear todas las frecuencias" title="Bloquear todas: no cambian al coordinar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
       <button class="btn small icon" id="unlockAll" aria-label="Desbloquear todas las frecuencias" title="Desbloquear todas: se recalculan al coordinar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 0 1 5.6-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <button class="btn small icon" id="undoBtn" disabled aria-label="Deshacer" title="Deshacer (⌘Z / Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 6h6.5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
@@ -469,6 +477,13 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <h2 id="pkT">Cambiar de proyecto</h2>
     <div class="pklist" id="pkList"></div>
     <div class="mbtns"><button class="btn" id="pkNo">Cerrar</button></div>
+  </div>
+</div>
+<div class="modal" id="hcModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="hcT" style="max-width:760px;width:min(760px,96vw)">
+    <h2 id="hcT">Revisar proyecto</h2>
+    <div id="hcBody" style="overflow:auto;max-height:68vh"></div>
+    <div class="mbtns"><button class="btn" id="hcCopy">Copiar resumen</button><button class="btn" id="hcNo">Cerrar</button></div>
   </div>
 </div>
 <div class="modal" id="profModal" hidden>
@@ -1060,6 +1075,53 @@ function profileNote(g){
   if(g.preset==="custom")return "Reglas personalizadas.";
   return "Valores orientativos: ajústalos a lo que indique el fabricante.";
 }
+/* Revisar proyecto: reúne en una lista lo que está mal (problemas por canal), lo que falta (canales sin asignar, receptores sin enviar)
+   y avisos generales (escaneos, TV, frecuencias sin bloquear). */
+function healthReport(){
+  analyzeNow();
+  const items=[],C=analysis.C;let total=0,assigned=0;
+  for(const g of state.groups)for(const e of g.freqs){total++;if(e.f!=null)assigned++;}
+  for(const c of C)if(c.issues.length){
+    const more=c.issues.length>6?[`…y ${c.issues.length-6} más`]:[];
+    items.push({sev:"bad",title:`${chFull(c.g,c.i)} · ${fmt(c.f)} MHz`,detail:c.issues.slice(0,6).concat(more),key:c.g.id+":"+c.i,f:c.f});
+  }
+  for(const g of state.groups){const n=g.freqs.filter(e=>e.f==null).length;if(n)items.push({sev:"warn",title:`${g.name}: ${n} canal${n>1?"es":""} sin frecuencia`,detail:["Pulsa «Coordinar frecuencias» o asígnalas a mano."]});}
+  for(const g of state.groups)g.freqs.forEach((e,i)=>{
+    if(!e.rx)return;const r=rxChan(e);
+    if(!r){items.push({sev:"warn",title:`${chFull(g,i)}: receptor sin conexión`,detail:["Está enlazado a un receptor que ahora no está en línea."],key:g.id+":"+i,f:e.f});return;}
+    const fr=rxFreq(r.c);
+    if(e.f!=null&&fr!==e.f)items.push({sev:"warn",title:`${chFull(g,i)}: sin enviar al receptor`,detail:[`El receptor está en ${fr!=null?fmt(fr)+" MHz":"una frecuencia desconocida"} y la coordinación dice ${fmt(e.f)} MHz.`],key:g.id+":"+i,f:e.f});
+  });
+  const sinBloq=C.filter(c=>!state.groups.find(g=>g===c.g).freqs[c.i].locked).length;
+  if(sinBloq)items.push({sev:"info",title:`${sinBloq} frecuencia${sinBloq>1?"s":""} sin bloquear`,detail:["Cambian si vuelves a coordinar. Bloquéalas cuando estén enviadas."]});
+  if(!state.scans.length)items.push({sev:"info",title:"Sin escaneos",detail:["La coordinación no sabe qué hay en el aire. Añade uno en Escaneos o captura el espectro en vivo."]});
+  else if(!activeScans().length)items.push({sev:"info",title:"Ningún escaneo marcado",detail:["Hay escaneos cargados, pero no se usa ninguno."]});
+  else if(!state.scan.enabled)items.push({sev:"info",title:"«Evitar lo que supere los umbrales» está desactivado",detail:["Los escaneos se dibujan, pero no cuentan al coordinar."]});
+  if(!state.tv.length)items.push({sev:"info",title:"Sin canales de TV marcados",detail:["Marca los canales de TV ocupados del lugar para evitarlos."]});
+  const propios=state.groups.filter(g=>!g.model).length;
+  if(propios)items.push({sev:"info",title:`${propios} grupo${propios>1?"s":""} con reglas propias`,detail:["No son de la biblioteca: comprueba las separaciones con el fabricante."]});
+  const rank={bad:0,warn:1,info:2};items.sort((a,b)=>rank[a.sev]-rank[b.sev]);
+  return {total,assigned,bad:items.filter(i=>i.sev==="bad").length,warn:items.filter(i=>i.sev==="warn").length,items};
+}
+function hcText(r){return [`Frecuencias: ${r.assigned} de ${r.total} asignadas. Con problemas: ${r.bad}. Avisos: ${r.warn}.`,...r.items.map(i=>`[${{bad:"Problema",warn:"Aviso",info:"Nota"}[i.sev]}] ${i.title}${i.detail.length?" — "+i.detail.join("; "):""}`)].join("\n");}
+let hcLast=null;
+function showHealth(){
+  const r=hcLast=healthReport(),ok=!r.bad&&!r.warn;
+  $("#hcBody").innerHTML=`<div class="hcsum"><span>Asignadas <b>${r.assigned}/${r.total}</b></span><span>Con problemas <b>${r.bad}</b></span><span>Avisos <b>${r.warn}</b></span></div>`+
+    `<ul class="hcl">${ok?`<li class="ok"><i class="dot"></i><div><div class="tt">Todo en orden</div><div class="dd">Sin problemas por canal, sin canales por asignar y con los receptores al día.</div></div></li>`:""}`+
+    r.items.map((i,n)=>`<li class="${i.sev}"${i.key?` data-k="${esc(i.key)}" data-f="${i.f}" title="Ir a esta frecuencia"`:""}><i class="dot"></i><div><div class="tt">${esc(i.title)}</div>${i.detail.length?`<div class="dd">${i.detail.map(esc).join("<br>")}</div>`:""}</div></li>`).join("")+`</ul>`;
+  $("#hcModal").hidden=false;$("#hcNo").focus();
+}
+$("#hcBtn").onclick=showHealth;
+$("#hcNo").onclick=()=>{$("#hcModal").hidden=true;};
+$("#hcCopy").onclick=async()=>{if(!hcLast)return;toast(await copyText(hcText(hcLast))?"Resumen copiado.":"No se ha podido copiar al portapapeles.");};
+$("#hcBody").addEventListener("click",e=>{
+  const li=e.target.closest("li[data-k]");if(!li)return;
+  const f=+li.dataset.f;selected=li.dataset.k;$("#hcModal").hidden=true;
+  if(isFinite(f)&&f>0)setView(f-3000,f+3000);else draw();
+  renderTable();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#hcModal").hidden)$("#hcModal").hidden=true;});
 function renderGroups(){
   $("#groups").innerHTML=state.groups.map(g=>`
   <div class="gcard" style="--gc:${esc(g.color)}" data-id="${g.id}">
@@ -2810,7 +2872,7 @@ $("#pkList").addEventListener("click",e=>{const b=e.target.closest("[data-id]");
 $("#pkNo").onclick=()=>{$("#pickModal").hidden=true;};
 $("#pickModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#pickModal").hidden=true;});
 const MENU_ACC={cambiar:()=>projPick(),nuevo:()=>projNew(),duplicar:()=>projDup(),renombrar:()=>projRen(),borrar:()=>projDel(),
-  vaciar:()=>$("#reset").click(),informe:()=>$("#reportBtn").click(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
+  vaciar:()=>$("#reset").click(),informe:()=>$("#reportBtn").click(),revisar:()=>showHealth(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
 function menuProyecto(a){const f=MENU_ACC[a];if(f){f();return true;}return false;}
 function menuMonitor(a){
   const sw=(id,txt)=>{const c=$(id);c.checked=!c.checked;c.dispatchEvent(new Event("change"));toast(`${txt} ${c.checked?"activado":"desactivado"}.`);return true;};
