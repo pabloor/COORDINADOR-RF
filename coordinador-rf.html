@@ -89,6 +89,11 @@ main{min-width:0;min-height:0;display:flex;flex-direction:column}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:2px}
 .freqbar{display:flex;gap:4px 18px;flex-wrap:wrap;padding:6px 14px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line);background:var(--panel);font-variant-numeric:tabular-nums}
 .freqbar b{color:var(--ink);font-weight:600}
+.viewbar{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:4px 14px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12.5px;color:var(--muted)}
+.viewbar label{display:flex;align-items:center;gap:6px}
+.viewbar input{width:84px;padding:3px 6px;font-variant-numeric:tabular-nums;text-align:right}
+.viewbar .u{margin-left:-6px}
+#mini{flex:1;min-width:140px;height:22px;cursor:pointer;border-radius:4px}
 .freqbar .fsel{color:var(--sel)}
 #spec.grab{cursor:grab}#spec.grabbing{cursor:ew-resize}
 .spec-wrap{position:relative;height:46%;min-height:260px;border-bottom:1px solid var(--line);background:var(--plot)}
@@ -345,6 +350,14 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
   <div class="spec-wrap">
     <canvas id="spec" aria-label="Espectro con portadoras e intermodulación"></canvas>
     <div id="tip" hidden></div>
+  </div>
+  <div class="viewbar" id="viewBar">
+    <label>Inicio<input id="vwA" type="text" inputmode="decimal" aria-label="Inicio de la vista (MHz)"></label>
+    <label>Centro<input id="vwC" type="text" inputmode="decimal" aria-label="Centro de la vista (MHz)"></label>
+    <label>Fin<input id="vwB" type="text" inputmode="decimal" aria-label="Fin de la vista (MHz)"></label>
+    <label>Ancho<input id="vwS" type="text" inputmode="decimal" aria-label="Ancho de la vista (MHz)"></label>
+    <span class="u">MHz</span>
+    <canvas id="mini" aria-label="Parte del espectro que se ve: arrastra el recuadro para desplazarla o haz clic para centrarla" title="Arrastra el recuadro para desplazar la vista; clic para centrarla"></canvas>
   </div>
   <div class="table-wrap">
     <div class="tbar">
@@ -1326,7 +1339,7 @@ function draw(){
   g.textAlign="right";g.textBaseline="middle";
   if(A.length)for(let l=-120;l<=-20;l+=20){const y=yL(l);g.fillText(String(l),PADL-6,y);}
   g.save();g.translate(11,PADT+ph/2);g.rotate(-Math.PI/2);g.textAlign="center";g.fillText(A.length?"dBm":"",0,0);g.restore();
-  updFreqBar();
+  syncViewBar();updFreqBar();
 }
 let cursorF=null,carDrag=null,hoverSrc=new Set();
 /* Productos de intermodulación bajo el cursor (solo en la franja inferior, donde se dibujan): qué portadoras los producen. */
@@ -1351,6 +1364,49 @@ function updFreqBar(){
   else h+=`<span>Haz clic en una línea para seleccionarla y arrástrala para moverla</span>`;
   if(bar._h!==h){bar.innerHTML=h;bar._h=h;}
 }
+/* Vista: campos de Inicio, Centro, Fin y Ancho (MHz) y una franja con todo el espectro y el recuadro de lo que se ve. */
+const miniCv=$("#mini"),miniCtx=miniCv.getContext("2d");
+function miniRange(){const [blo,bhi]=bounds(),m=(Math.max(bhi,view.b)-Math.min(blo,view.a))*.03;return [Math.min(blo,view.a)-m,Math.max(bhi,view.b)+m];}
+function syncViewBar(){
+  const f=v=>(v/1000).toFixed(3),set=(id,v)=>{const el=$(id);if(el&&document.activeElement!==el)el.value=v;};
+  set("#vwA",f(view.a));set("#vwB",f(view.b));set("#vwC",f((view.a+view.b)/2));set("#vwS",f(view.b-view.a));
+  drawMini();
+}
+function drawMini(){
+  const r=miniCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,W=Math.max(1,r.width),H=Math.max(1,r.height);
+  if(miniCv.width!==Math.round(W*dpr)||miniCv.height!==Math.round(H*dpr)){miniCv.width=Math.round(W*dpr);miniCv.height=Math.round(H*dpr);}
+  const g=miniCtx;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  g.fillStyle=css("--plot");g.fillRect(0,0,W,H);
+  const [lo,hi]=miniRange(),X=f=>(f-lo)/(hi-lo)*W;
+  state.groups.forEach(gr=>{g.globalAlpha=.35;g.fillStyle=gr.color;for(const [a,b] of gr.segs)g.fillRect(X(a),H-5,Math.max(1,X(b)-X(a)),5);});
+  g.globalAlpha=1;
+  for(const c of analysis.C){g.fillStyle=c.g.color;g.fillRect(Math.round(X(c.f)),3,2,H-9);}
+  const x0=X(view.a),x1=X(view.b);
+  g.fillStyle=css("--ink");g.globalAlpha=.14;g.fillRect(x0,0,Math.max(2,x1-x0),H);g.globalAlpha=.9;g.strokeStyle=css("--sel");g.lineWidth=1.5;g.strokeRect(x0+.75,.75,Math.max(2,x1-x0)-1.5,H-1.5);g.globalAlpha=1;
+}
+function setView(a,b){
+  const [blo,bhi]=bounds(),maxSpan=Math.max(600000,(bhi-blo)*1.5);
+  if(!isFinite(a)||!isFinite(b))return;
+  if(b-a<300){const m=(a+b)/2;a=m-150;b=m+150;}
+  if(b-a>maxSpan){const m=(a+b)/2;a=m-maxSpan/2;b=m+maxSpan/2;}
+  view={a,b};draw();
+}
+const mhzVal=el=>{const v=parseFloat(String(el.value).trim().replace(",","."));return isFinite(v)?v*1000:NaN;};
+for(const [id,fn] of [["#vwA",v=>setView(Math.min(v,view.b-300),view.b)],["#vwB",v=>setView(view.a,Math.max(v,view.a+300))],
+  ["#vwC",v=>{const s=view.b-view.a;setView(v-s/2,v+s/2);}],["#vwS",v=>{const m=(view.a+view.b)/2;setView(m-v/2,m+v/2);}]])
+  $(id).addEventListener("change",e=>{const v=mhzVal(e.target);if(isFinite(v))fn(v);else syncViewBar();});
+for(const id of ["#vwA","#vwB","#vwC","#vwS"])$(id).addEventListener("keydown",e=>{if(e.key==="Enter")e.target.blur();});
+let miniDrag=null;
+const miniF=e=>{const r=miniCv.getBoundingClientRect(),[lo,hi]=miniRange();return lo+(e.clientX-r.left)/r.width*(hi-lo);};
+miniCv.addEventListener("pointerdown",e=>{
+  const f=miniF(e),inside=f>=view.a&&f<=view.b;
+  miniDrag={off:inside?f-view.a:(view.b-view.a)/2};miniCv.setPointerCapture(e.pointerId);
+  const a=f-miniDrag.off;setView(a,a+(view.b-view.a));
+});
+miniCv.addEventListener("pointermove",e=>{if(!miniDrag)return;const a=miniF(e)-miniDrag.off;setView(a,a+(view.b-view.a));});
+miniCv.addEventListener("pointerup",()=>{miniDrag=null;});
+miniCv.addEventListener("pointercancel",()=>{miniDrag=null;});
+new ResizeObserver(()=>drawMini()).observe(miniCv);
 function fAt(e){const r=cv.getBoundingClientRect();return view.a+(e.clientX-r.left-PADL)/(r.width-PADL-PADR)*(view.b-view.a);}
 function zoom(center,k){
   const [blo,bhi]=bounds(),maxSpan=Math.max(600000,(bhi-blo)*1.5),span=view.b-view.a;

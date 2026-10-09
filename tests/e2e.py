@@ -1138,7 +1138,51 @@ def t_escaneos(B):
         ctx.close()
 
 
-BLOQUES = {"escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_vista(B):
+    print("Vista de la gráfica: campos de Inicio, Centro, Fin y Ancho, y franja")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        pg.evaluate("()=>setView(500000,600000)")
+        v = pg.evaluate("()=>[$('#vwA').value,$('#vwB').value,$('#vwC').value,$('#vwS').value]")
+        check("los campos reflejan la vista (MHz)", v == ["500.000", "600.000", "550.000", "100.000"], v)
+        pg.fill("#vwA", "520,5"); pg.press("#vwA", "Tab")
+        r = pg.evaluate("()=>[view.a,view.b,$('#vwS').value]")
+        check("Inicio mueve solo el extremo izquierdo (acepta coma decimal)", r == [520500, 600000, "79.500"], r)
+        pg.fill("#vwB", "560"); pg.press("#vwB", "Tab")
+        check("Fin mueve solo el extremo derecho", pg.evaluate("()=>[view.a,view.b]") == [520500, 560000])
+        pg.fill("#vwC", "600"); pg.press("#vwC", "Tab")
+        r = pg.evaluate("()=>[view.a,view.b]")
+        check("Centro desplaza la vista sin cambiar su ancho", r == [580250, 619750] or abs((r[1] - r[0]) - 39500) < 1 and abs((r[0] + r[1]) / 2 - 600000) < 1, r)
+        pg.fill("#vwS", "20"); pg.press("#vwS", "Tab")
+        r = pg.evaluate("()=>[view.a,view.b]")
+        check("Ancho cambia el zoom alrededor del centro", abs((r[1] - r[0]) - 20000) < 1 and abs((r[0] + r[1]) / 2 - 600000) < 1, r)
+        pg.fill("#vwS", "0,01"); pg.press("#vwS", "Tab")
+        check("no deja un ancho absurdo (mínimo 300 kHz)", pg.evaluate("()=>view.b-view.a") >= 300)
+        pg.fill("#vwA", "hola"); pg.press("#vwA", "Tab")
+        check("un valor que no es un número no cambia la vista", pg.evaluate("()=>$('#vwA').value") == pg.evaluate("()=>(view.a/1000).toFixed(3)"))
+        # la rueda y los botones actualizan los campos
+        pg.evaluate("()=>setView(500000,600000)")
+        pg.click("#zin")
+        check("al hacer zoom los campos se actualizan", pg.evaluate("()=>$('#vwS').value") != "100.000")
+        # la franja: arrastrar el recuadro desplaza la vista; clic centra
+        pg.evaluate("()=>setView(520000,560000)")
+        box = pg.locator("#mini").bounding_box()
+        info = pg.evaluate("()=>{const [lo,hi]=miniRange();return {lo,hi,a:view.a,b:view.b}}")
+        xa = box["x"] + (info["a"] + 5000 - info["lo"]) / (info["hi"] - info["lo"]) * box["width"]
+        y = box["y"] + box["height"] / 2
+        pg.mouse.move(xa, y); pg.mouse.down(); pg.mouse.move(xa + 60, y, steps=5); pg.mouse.up()
+        r = pg.evaluate("()=>[view.a,view.b]")
+        check("arrastrar el recuadro de la franja desplaza la vista sin cambiar el ancho", r[0] > 520000 and abs((r[1] - r[0]) - 40000) < 1, r)
+        fr = pg.evaluate("()=>{const [lo,hi]=miniRange();return (view.a+view.b)/2>(lo+hi)/2?.08:.92}")
+        esperado = pg.evaluate(f"()=>{{const [lo,hi]=miniRange();return lo+{fr}*(hi-lo)}}")
+        pg.mouse.click(box["x"] + box["width"] * fr, y)
+        centro = pg.evaluate("()=>(view.a+view.b)/2")
+        check("un clic fuera del recuadro centra la vista ahí", abs(centro - esperado) < 800, [centro, esperado])
+        ctx.close()
+
+
+BLOQUES = {"vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)
