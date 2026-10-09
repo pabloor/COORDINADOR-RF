@@ -68,6 +68,10 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
 - **Varios escaneos:** en *Coordinación → Escaneos* se añaden uno o varios archivos CSV/TXT y las capturas del analizador. Cada uno tiene su casilla, su color y su botón de quitar; se coordina con la **suma**
   (el máximo en cada frecuencia) de los marcados y la gráfica los dibuja **por separado**, cada uno con su color, con las líneas de los dos umbrales. Los picos de escaneos distintos a menos de 100 kHz cuentan como uno.
   Los proyectos antiguos con un solo escaneo lo conservan en la lista.
+- **Escaneos con datos:** cada escaneo guarda fecha, lugar, analizador y notas (editables con ✎); la lista tiene búsqueda y orden.
+- **Vista de la gráfica:** campos de Inicio, Centro, Fin y Ancho y franja con el espectro completo; botón para guardar la gráfica como imagen PNG (carpeta *Imágenes* de Coordinador RF).
+- **Perfil del equipo** con los modos Robusto, Medio y Cantidad lado a lado, y **Revisar proyecto** con los problemas por canal y avisos generales.
+- **Recorrido de bienvenida** la primera vez; se reabre con «?» o desde el menú *Proyecto*.
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).
 
 ## Firma estable (Mac, opcional)

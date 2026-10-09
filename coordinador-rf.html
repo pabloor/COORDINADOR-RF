@@ -125,6 +125,11 @@ td small.rxst{display:block;font-size:12px;margin-top:2px}
 .iss li{margin:2px 0}
 .empty{padding:24px 14px;color:var(--muted)}
 
+#tour{position:fixed;inset:0;z-index:40}
+#tourHole{position:fixed;border-radius:8px;box-shadow:0 0 0 9999px rgba(10,14,20,.62);outline:2px solid var(--accent,#4da3ff);pointer-events:none;transition:all .2s}
+#tourCard{position:fixed;width:min(360px,92vw);background:var(--panel,#fff);color:var(--ink);border-radius:10px;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+#tourCard h3{margin:2px 0 6px;font-size:16px}#tourCard p{margin:0 0 8px;font-size:13px;line-height:1.45}
+#tourCard .tn{font-size:11px;opacity:.7}#tourCard .tnever{display:flex;gap:6px;font-size:12px;margin-bottom:8px;align-items:center}
 .modal{position:fixed;inset:0;background:rgba(10,14,20,.45);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
 .mbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:560px;width:100%;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
 .mbox h2{margin:0 0 6px;font-size:19px}
@@ -262,6 +267,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <button role="tab" data-tab="live" aria-selected="false">Espectro en vivo</button>
   </nav>
   <div class="status" id="status" aria-live="polite"></div>
+  <button class="btn small icon" id="tourBtn" aria-label="Recorrido de bienvenida" title="Recorrido por la aplicación" style="font-weight:700">?</button>
   <button class="btn primary" id="btnCoord">Coordinar frecuencias</button>
 </header>
 
@@ -491,6 +497,16 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <h2 id="pkT">Cambiar de proyecto</h2>
     <div class="pklist" id="pkList"></div>
     <div class="mbtns"><button class="btn" id="pkNo">Cerrar</button></div>
+  </div>
+</div>
+<div id="tour" hidden>
+  <div id="tourHole"></div>
+  <div id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourT">
+    <div class="tn" id="tourN"></div>
+    <h3 id="tourT"></h3>
+    <p id="tourP"></p>
+    <label class="tnever"><input type="checkbox" id="tourNever"> No volver a mostrar al abrir</label>
+    <div class="mbtns"><button class="btn" id="tourSkip">Salir</button><button class="btn" id="tourPrev">Anterior</button><button class="btn primary" id="tourNext">Siguiente</button></div>
   </div>
 </div>
 <div class="modal" id="hcModal" hidden>
@@ -2919,7 +2935,55 @@ $("#pkList").addEventListener("click",e=>{const b=e.target.closest("[data-id]");
 $("#pkNo").onclick=()=>{$("#pickModal").hidden=true;};
 $("#pickModal").addEventListener("keydown",e=>{if(e.key==="Escape")$("#pickModal").hidden=true;});
 const MENU_ACC={cambiar:()=>projPick(),nuevo:()=>projNew(),duplicar:()=>projDup(),renombrar:()=>projRen(),borrar:()=>projDel(),
-  vaciar:()=>$("#reset").click(),informe:()=>$("#reportBtn").click(),revisar:()=>showHealth(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
+  vaciar:()=>$("#reset").click(),informe:()=>$("#reportBtn").click(),revisar:()=>showHealth(),recorrido:()=>tourStart(),carpeta:()=>$("#projDir").click(),pegar:()=>$("#pasteJson").click()};
+
+/* ===== Recorrido de bienvenida ===== */
+const TOUR_KEY="coordrf.tour.visto";
+const TOUR=[
+  {s:"#projSel",tab:"coord",t:"Proyectos",p:"Cada evento es un proyecto con sus grupos, canales y escaneos. Cambia, duplica o importa de Wireless Workbench desde el menú Proyecto."},
+  {s:"aside",tab:"coord",t:"Grupos de equipos",p:"Cada grupo es un tipo de equipo con su banda, paso y reglas de separación. Con el botón de perfil ves los modos Robusto, Medio y Cantidad lado a lado."},
+  {s:"#scanList",tab:"coord",t:"Escaneos",p:"Carga o captura escaneos del lugar, con fecha, lugar y analizador. Marca los que quieras: se coordina con la suma de los marcados y se muestran por separado. Busca y ordena la lista."},
+  {s:"#btnCoord",tab:"coord",t:"Coordinar",p:"Calcula las frecuencias libres de intermodulación, TV, exclusiones y picos de los escaneos. Las frecuencias bloqueadas no se mueven."},
+  {s:"#tbody",tab:"coord",t:"Frecuencias",p:"Aquí están los canales con su frecuencia, nombre y equipo. Puedes editarlos, bloquearlos y enviarlos a un receptor."},
+  {s:"#hcBtn",tab:"coord",t:"Revisar proyecto",p:"Lista los problemas por canal, canales sin asignar y receptores sin enviar antes de salir al evento."},
+  {s:"#spec",tab:"coord",t:"Gráfica",p:"Espectro con portadoras e intermodulación. Los campos de Inicio, Centro, Fin y Ancho y la franja inferior controlan la vista. El botón de imagen guarda la gráfica como PNG."},
+  {s:'.tabs [data-tab="mon"]',tab:"mon",t:"Monitor de canales",p:"Batería, RF, calidad y audio de los receptores en red, con avisos y registro de eventos."},
+  {s:'.tabs [data-tab="live"]',tab:"live",t:"Espectro en vivo",p:"Espectro y cascada de tu analizador. Desde aquí puedes capturar el espectro como un escaneo nuevo."}
+];
+let tourI=-1;
+function tourShow(i){
+  if(i<0||i>=TOUR.length){tourEnd();return;}
+  tourI=i;const st=TOUR[i];
+  try{setTab(st.tab);}catch(e){}
+  const el=document.querySelector(st.s);
+  $("#tour").hidden=false;
+  if(el&&el.scrollIntoView)el.scrollIntoView({block:"nearest"});
+  const r=el&&el.getBoundingClientRect(),h=$("#tourHole"),c=$("#tourCard");
+  $("#tourN").textContent="Paso "+(i+1)+" de "+TOUR.length;$("#tourT").textContent=st.t;$("#tourP").textContent=st.p;
+  $("#tourPrev").disabled=i===0;$("#tourNext").textContent=i===TOUR.length-1?"Terminar":"Siguiente";
+  const W=innerWidth,H=innerHeight;
+  if(r&&r.width>0){
+    const x=Math.max(4,r.left-6),y=Math.max(4,r.top-6),w=Math.min(W-8,r.width+12),hh=Math.min(H-8,r.height+12);
+    Object.assign(h.style,{left:x+"px",top:y+"px",width:w+"px",height:hh+"px",display:""});
+    const cw=Math.min(360,W*.92),ch=c.offsetHeight||200;
+    let cy=y+hh+12;if(cy+ch>H-8)cy=Math.max(8,y-ch-12);if(cy<8||cy+ch>H-8)cy=Math.max(8,H-ch-12);
+    c.style.top=cy+"px";c.style.left=Math.max(8,Math.min(W-cw-8,x))+"px";
+  }else{h.style.display="none";c.style.top="30%";c.style.left=Math.max(8,(W-Math.min(360,W*.92))/2)+"px";}
+  $("#tourNext").focus();
+}
+function tourEnd(){
+  $("#tour").hidden=true;tourI=-1;
+  if($("#tourNever").checked){try{localStorage.setItem(TOUR_KEY,"1");}catch(e){}}
+  try{setTab("coord");}catch(e){}
+}
+function tourStart(){let n=false;try{n=!!localStorage.getItem(TOUR_KEY);}catch(e){}$("#tourNever").checked=n;tourShow(0);}
+$("#tourBtn").onclick=tourStart;
+$("#tourNext").onclick=()=>tourShow(tourI+1);
+$("#tourPrev").onclick=()=>tourShow(tourI-1);
+$("#tourSkip").onclick=tourEnd;
+document.addEventListener("keydown",e=>{if($("#tour").hidden)return;if(e.key==="Escape")tourEnd();else if(e.key==="ArrowRight")tourShow(tourI+1);else if(e.key==="ArrowLeft"&&tourI>0)tourShow(tourI-1);});
+addEventListener("resize",()=>{if(!$("#tour").hidden)tourShow(tourI);});
+setTimeout(()=>{let v=false;try{v=!!localStorage.getItem(TOUR_KEY);}catch(e){}if(!v&&!navigator.webdriver)tourStart();},800);
 function menuProyecto(a){const f=MENU_ACC[a];if(f){f();return true;}return false;}
 function menuMonitor(a){
   const sw=(id,txt)=>{const c=$(id);c.checked=!c.checked;c.dispatchEvent(new Event("change"));toast(`${txt} ${c.checked?"activado":"desactivado"}.`);return true;};

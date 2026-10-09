@@ -6,6 +6,14 @@ hace falta para los receptores, el AD600 y para guardar los proyectos y los info
 
 **Windows:** descarga `Coordinador.RF.exe` y haz doble clic.
 
+**Novedades de la 1.26**
+- **Perfil del equipo lado a lado:** el botón de perfil de cada grupo muestra una tabla con los modos Robusto, Medio y Cantidad a la vez (separaciones entre canales y de intermodulación) y permite elegir un modo desde ella.
+- **Guardar la gráfica como imagen:** botón de imagen junto a la gráfica; guarda un PNG con cabecera en *Documentos/Coordinador RF/Imágenes*.
+- **Revisar proyecto:** botón y *Proyecto → Revisar proyecto…*; lista los problemas por canal, canales sin asignar, receptores sin enviar y avisos generales.
+- **Vista de la gráfica:** campos de Inicio, Centro, Fin y Ancho (MHz) y una franja con el espectro completo para desplazar la vista.
+- **Escaneos con datos:** fecha, lugar, analizador y notas de cada escaneo (editables con ✎), búsqueda y orden de la lista; los archivos usan su fecha de modificación y las capturas el analizador.
+- **Recorrido de bienvenida:** se muestra la primera vez (con «No volver a mostrar») y se reabre con el botón «?» o con *Proyecto → Recorrido por la aplicación…*.
+
 **Novedades de la 1.25**
 - **Escaneos:** el selector «Picos del escaneo» se llama ahora «Protección e intermodulación» o «Solo protección», y su texto explicativo ya no menciona Wireless Workbench.
 

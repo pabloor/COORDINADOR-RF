@@ -790,7 +790,7 @@ def t_menu_proyecto(B):
     pr.copy_clipboard = lambda t: copied.append(t) or True
     m = pr.project_menu(wv, mm)
     acts = {i.title: i.function for i in m[0].items if isinstance(i, Action)}
-    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 15 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
+    check("el menú «Proyecto» tiene las opciones esperadas", m[0].title == "Proyecto" and len(acts) == 16 and "Cambiar de proyecto…" in acts and "Borrar proyecto…" in acts, list(acts))
     info = {"CFBundleShortVersionString": "0.0.0", "CFBundleVersion": "0.0.0"}
     pr.apply_bundle_info(info)
     check("«Acerca de» muestra el nombre y la versión de la app (no 0.0.0)", info["CFBundleName"] == "Coordinador RF" and info["CFBundleShortVersionString"] == pr.VERSION and info["CFBundleVersion"] == pr.VERSION and pr.VERSION[0].isdigit(), info)
@@ -1306,7 +1306,32 @@ def t_revisar(B):
         ctx.close()
 
 
-BLOQUES = {"revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_recorrido(B):
+    print("Recorrido de bienvenida")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        check("con el navegador automatizado no se abre solo", pg.evaluate("()=>document.getElementById('tour').hidden"))
+        pg.click("#tourBtn")
+        check("el botón «?» abre el recorrido", pg.evaluate("()=>!document.getElementById('tour').hidden && /Paso 1 de/.test(document.getElementById('tourN').textContent)"))
+        pg.click("#tourNext")
+        check("Siguiente avanza de paso", pg.evaluate("()=>/Paso 2 de/.test(document.getElementById('tourN').textContent)"))
+        pg.click("#tourPrev")
+        check("Anterior vuelve", pg.evaluate("()=>/Paso 1 de/.test(document.getElementById('tourN').textContent)"))
+        ok = True
+        n = pg.evaluate("()=>TOUR.length")
+        for i in range(n):
+            r = pg.evaluate("(i)=>{tourShow(i);const e=document.querySelector(TOUR[i].s);const b=e&&e.getBoundingClientRect();return !!b&&b.width>0}", i)
+            ok = ok and r
+        check("todos los pasos señalan un elemento visible", ok)
+        pg.evaluate("()=>{tourShow(0);document.getElementById('tourNever').checked=true;}")
+        pg.keyboard.press("Escape")
+        check("Escape cierra y recuerda «no volver a mostrar»", pg.evaluate("()=>document.getElementById('tour').hidden && localStorage.getItem(TOUR_KEY)==='1'"))
+        r = pg.evaluate("()=>{menuProyecto('recorrido');return !document.getElementById('tour').hidden}")
+        check("la acción «recorrido» del menú lo abre", r)
+        ctx.close()
+
+
+BLOQUES = {"recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)
