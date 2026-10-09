@@ -1201,7 +1201,41 @@ def t_imagen(B):
         ctx.close()
 
 
-BLOQUES = {"imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_perfil(B):
+    print("Perfil del equipo con los modos lado a lado")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        pg.evaluate("()=>{state.groups=[mkModelGroup('shure-psm1000','G10E',2,0),mkModelGroup('senn-iemg4','A',2,1)];save();renderGroups();analyzeNow()}")
+        pg.click('[data-prof] >> nth=0')
+        pg.wait_for_selector("#profModal:not([hidden])")
+        tit = pg.inner_text("#prT")
+        check("el título dice equipo y banda", "PSM 1000" in tit and "G10E" in tit, tit)
+        modos = pg.evaluate("()=>[...document.querySelectorAll('#prBody [data-pmode]')].map(b=>b.textContent)")
+        check("una columna por cada modo de la biblioteca", modos == ["Robusto", "Medio", "Cantidad"], modos)
+        tabla = pg.evaluate("""()=>[...document.querySelectorAll('#prBody table')[1].querySelectorAll('tbody tr')].map(r=>[...r.cells].map(c=>c.textContent))""")
+        fila = {r[0]: r[1:] for r in tabla}
+        check("valores de PSM 1000 como en WWB: entre portadoras 375 / 350 / 325 y 3.er orden 275 / 250 / 225", fila["Entre portadoras"] == ["375 kHz", "350 kHz", "325 kHz"] and fila["Intermodulación 3er orden"] == ["275 kHz", "250 kHz", "225 kHz"], fila)
+        check("3 Tx de 3.er orden 100 / 50 / 0 y origen «Fabricante»", fila["3 Tx · 3er orden"] == ["100 kHz", "50 kHz", "0"] and fila["Origen"] == ["Fabricante"] * 3, fila)
+        act = pg.evaluate("()=>[...document.querySelectorAll('#prBody thead th')].map(t=>t.classList.contains('on'))")
+        check("el modo activo del grupo sale resaltado", act == [False, True, False, False] or act[1:].count(True) == 1, act)
+        pg.click('#prBody [data-pmode="2"]')
+        r = pg.evaluate("()=>[state.groups[0].preset,state.groups[0].cc,state.groups[0].im3,state.groups[0].im33,document.querySelectorAll('#prBody thead th.on').length]")
+        check("pulsar un modo lo aplica al grupo y lo resalta", r == ["mode:2", 325, 225, 0, 1], r)
+        pg.keyboard.press("Escape")
+        check("Escape cierra la ventana", pg.evaluate("()=>document.getElementById('profModal').hidden"))
+        # grupo de otra marca
+        pg.click('[data-prof] >> nth=1')
+        pg.wait_for_selector("#profModal:not([hidden])")
+        check("también funciona con equipos de otras marcas (valores orientativos)", "Orientativo" in pg.inner_text("#prBody") and "ew IEM G4" in pg.inner_text("#prT"), pg.inner_text("#prT"))
+        pg.click("#prNo")
+        # grupo personalizado: sin botón
+        pg.evaluate("()=>{state.groups=[mkGroup('Mío',2,470000,694000,25,'analog',0)];renderGroups()}")
+        check("un grupo personalizado no tiene botón de comparar", pg.locator("[data-prof]").count() == 0)
+        ctx.close()
+
+
+BLOQUES = {"perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

@@ -186,6 +186,11 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .nettab input,.nettab select{width:100%}
 .tile .rx{border-top:1px dashed var(--line);margin-top:6px;padding-top:6px;font-size:12.5px}
 .tile .rx:empty{display:none}
+.proft{border-collapse:collapse;width:100%;font-size:13px}
+.proft th,.proft td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.proft th:first-child,.proft td:first-child{text-align:left;color:var(--muted)}
+.proft td.on,.proft th.on{background:rgba(47,125,209,.14)}
+.proft thead th{font-weight:600;vertical-align:bottom}
 .scanlist{display:flex;flex-direction:column;margin:2px 0 4px}
 .scrow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
 .scrow .sw{flex:none;width:18px;height:4px;border-radius:2px}
@@ -464,6 +469,13 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <h2 id="pkT">Cambiar de proyecto</h2>
     <div class="pklist" id="pkList"></div>
     <div class="mbtns"><button class="btn" id="pkNo">Cerrar</button></div>
+  </div>
+</div>
+<div class="modal" id="profModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="prT" style="max-width:1000px;width:min(1000px,96vw)">
+    <h2 id="prT">Perfil del equipo</h2>
+    <div id="prBody" style="overflow:auto;max-height:70vh"></div>
+    <div class="mbtns"><button class="btn" id="prNo">Cerrar</button></div>
   </div>
 </div>
 <div class="modal" id="diagModal" hidden>
@@ -1067,6 +1079,7 @@ function renderGroups(){
     ${g.model?"":`<label class="f">Paso (kHz)<input type="number" min="5" step="5" data-f="step" value="${g.step}"></label>`}
     <div class="rules">
       <label class="f" title="${esc(profileNote(g))} Separación mínima en kHz.">Reglas de separación (mínimo en kHz)<select data-f="preset" title="${esc(profileNote(g))} Separación mínima en kHz.">${profileOptions(g)}</select></label>
+      ${g.model?`<button class="btn small ghost" data-prof="${g.id}" title="Compara los modos del equipo (entre portadoras y cada intermodulación) en una tabla">Comparar modos del equipo</button>`:""}
       <div class="row2">
         <label class="f">Entre portadoras<input type="number" min="0" step="5" data-f="cc" value="${g.cc}"></label>
         <label class="f">Con IMD 3er orden<input type="number" min="0" step="5" data-f="im3" value="${g.im3}"></label>
@@ -1080,6 +1093,31 @@ function renderGroups(){
     </div>
   </div>`).join("");
 }
+/* Perfil del equipo: todos los modos de la biblioteca lado a lado, con el activo resaltado; pulsar un modo lo elige. */
+const PROF_ROWS=[["cc","Entre portadoras"],["im3","Intermodulación 3er orden"],["im33","3 Tx · 3er orden"],["im5","Intermodulación 5º orden"],["im35","3 Tx · 5º orden"],["im7","Intermodulación 7º orden"],["im9","Intermodulación 9º orden"]];
+let profGid=null;
+function renderProfile(){
+  const g=state.groups.find(x=>x.id===profGid),s=g&&g.model&&libSeries(g.model.series);
+  if(!g||!s){$("#profModal").hidden=true;return;}
+  const b=libBand(s,g.model.band),act=g.preset.startsWith("mode:")?+g.preset.slice(5):-1;
+  $("#prT").textContent=`Perfil: ${s.name} · banda ${g.model.band}`;
+  const info=[["Fabricante",s.brand],["Equipo",s.name],["Banda",`${g.model.band} (${segsText(g.segs)})`],["Paso de sintonía",`${g.step} kHz`],
+    ["Canales",groupChans(g)?`${groupChans(g).length} de frecuencia fija`:"libres, a pasos"]];
+  const th=s.modes.map((m,i)=>`<th class="${i===act?"on":""}"><button class="btn small ${i===act?"primary":"ghost"}" data-pmode="${i}" title="Usar este modo en el grupo">${esc(m.name)}</button></th>`).join("");
+  const rows=PROF_ROWS.map(([k,l])=>`<tr><td>${l}</td>${s.modes.map((m,i)=>{const v=ruleOf(m)[k];return `<td class="${i===act?"on":""}">${v?v+" kHz":"0"}</td>`;}).join("")}</tr>`).join("");
+  const org=`<tr><td>Origen</td>${s.modes.map((m,i)=>`<td class="${i===act?"on":""}" title="${esc(m.note||"")}">${m.src==="fab"?"Fabricante":"Orientativo"}</td>`).join("")}</tr>`;
+  $("#prBody").innerHTML=`<table class="proft"><tbody>${info.map(([a,v])=>`<tr><td>${a}</td><td colspan="${Math.max(1,s.modes.length)}">${esc(v)}</td></tr>`).join("")}</tbody></table>
+    <table class="proft" style="margin-top:12px"><thead><tr><th>Separación mínima</th>${th}</tr></thead><tbody>${rows}${org}</tbody></table>
+    ${act<0?`<p class="hint">El grupo tiene valores personalizados: elige un modo para sustituirlos.</p>`:""}`;
+}
+$("#groups").addEventListener("click",ev=>{const b=ev.target.closest("[data-prof]");if(!b)return;profGid=b.dataset.prof;renderProfile();$("#profModal").hidden=false;$("#prNo").focus();});
+$("#prBody").addEventListener("click",ev=>{
+  const b=ev.target.closest("[data-pmode]");if(!b)return;
+  const g=state.groups.find(x=>x.id===profGid),s=g&&g.model&&libSeries(g.model.series);if(!g||!s)return;
+  applyMode(g,s,+b.dataset.pmode);save();renderGroups();analyzeNow();renderTable();renderProfile();
+});
+$("#prNo").onclick=()=>{$("#profModal").hidden=true;};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#profModal").hidden)$("#profModal").hidden=true;});
 $("#groups").addEventListener("change",ev=>{
   const t=ev.target,card=t.closest(".gcard");if(!card||!t.dataset.f)return;
   const g=state.groups.find(x=>x.id===card.dataset.id);if(!g)return;
