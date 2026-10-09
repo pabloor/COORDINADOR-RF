@@ -202,6 +202,8 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .scrow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
 .scrow .sw{flex:none;width:18px;height:4px;border-radius:2px}
 .scrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scantools{display:flex;gap:6px;margin:4px 0}.scantools input{flex:1;min-width:0}
+.scrow .nm small.meta{display:block;color:var(--muted);font-size:11.5px}
 .scrow small{color:var(--muted);white-space:nowrap}
 .scrow .del{flex:none;padding:0 7px}
 .scrow.off .nm,.scrow.off small{opacity:.5}
@@ -294,6 +296,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <div class="sec">
       <p class="hint">Añade uno o varios CSV o TXT con dos columnas: frecuencia y nivel en dBm (RF Explorer, receptores o analizadores; la frecuencia puede estar en MHz, kHz o Hz). Se coordina con la suma de los marcados, y la gráfica los dibuja por separado.</p>
       <label class="f">Añadir archivos de escaneo<input type="file" id="scanFile" accept=".csv,.txt,.tsv" multiple></label>
+      <div id="scanTools" class="scantools" hidden><input type="search" id="scanFind" placeholder="Buscar escaneo…" aria-label="Buscar entre los escaneos"><select id="scanSort" aria-label="Ordenar los escaneos"><option value="fecha">Más recientes</option><option value="nombre">Nombre</option><option value="rango">Frecuencia</option></select></div>
       <div id="scanList" class="scanlist"></div>
       <div id="scanInfo" class="hint"></div>
       <label class="f" title="Nivel de ruido que se considera demasiado alto: lo que lo supere en el escaneo se trata como zona no recomendable y se evita al coordinar.">Umbral de exclusión (dBm)<input type="number" id="scanTh" step="1"></label>
@@ -470,6 +473,17 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <h2 id="nmT">Nombre</h2>
     <input type="text" id="nmText" maxlength="80" style="width:100%" aria-label="Nombre">
     <div class="mbtns"><button class="btn" id="nmNo">Cancelar</button><button class="btn primary" id="nmYes">Aceptar</button></div>
+  </div>
+</div>
+<div class="modal" id="scModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="scT" style="max-width:520px">
+    <h2 id="scT">Datos del escaneo</h2>
+    <label class="f">Nombre<input type="text" id="scName" maxlength="80"></label>
+    <label class="f">Lugar<input type="text" id="scPlace" maxlength="80" placeholder="Sala, escenario, ciudad…"></label>
+    <label class="f">Analizador<input type="text" id="scAn" maxlength="60" placeholder="RF Explorer, tinySA, AD600…"></label>
+    <label class="f">Fecha y hora<input type="datetime-local" id="scDate"></label>
+    <label class="f">Notas<textarea id="scNotes" rows="3" maxlength="400" style="width:100%"></textarea></label>
+    <div class="mbtns"><button class="btn" id="scNo">Cancelar</button><button class="btn primary" id="scYes">Guardar</button></div>
   </div>
 </div>
 <div class="modal" id="pickModal" hidden>
@@ -711,7 +725,8 @@ function normalize(s){
   for(const x of list){
     if(!x||!Array.isArray(x.f)||!Array.isArray(x.l)||x.f.length!==x.l.length||x.f.length<2)continue;
     const color=/^#[0-9a-f]{6}$/i.test(x.color||"")?x.color:SCAN_COLORS[st.scans.length%SCAN_COLORS.length];
-    st.scans.push({id:typeof x.id==="string"&&x.id?x.id:newScanId(),name:String(x.name||"Escaneo").slice(0,80),f:x.f,l:x.l,on:x.on!==false,color});
+    st.scans.push({id:typeof x.id==="string"&&x.id?x.id:newScanId(),name:String(x.name||"Escaneo").slice(0,80),f:x.f,l:x.l,on:x.on!==false,color,
+      date:isFinite(+x.date)&&+x.date>0?+x.date:null,place:String(x.place||"").slice(0,80),analyzer:String(x.analyzer||"").slice(0,60),notes:String(x.notes||"").slice(0,400)});
   }
   (s.groups||[]).forEach((g,i)=>{
     const base=mkGroup(g.name||"Grupo",Math.max(1,g.qty|0||1),g.min|0||470000,g.max|0||694000,Math.max(5,g.step|0||25),PRESETS[g.preset]?g.preset:"custom",i);
@@ -787,8 +802,10 @@ function parseExcl(){
 }
 /* Escaneos: la coordinación usa la suma (el máximo en cada frecuencia) de los escaneos marcados, y la gráfica los dibuja por separado. */
 const activeScans=()=>state.scans.filter(s=>s.on&&s.f.length>1);
-function addScan(name,f,l){
-  const s={id:newScanId(),name:String(name||"Escaneo").slice(0,80),f,l,on:true,color:SCAN_COLORS[state.scans.length%SCAN_COLORS.length]};
+function addScan(name,f,l,meta){
+  meta=meta||{};
+  const s={id:newScanId(),name:String(name||"Escaneo").slice(0,80),f,l,on:true,color:SCAN_COLORS[state.scans.length%SCAN_COLORS.length],
+    date:meta.date||null,place:String(meta.place||"").slice(0,80),analyzer:String(meta.analyzer||"").slice(0,60),notes:String(meta.notes||"").slice(0,400)};
   state.scans.push(s);return s;
 }
 function scanMax(a,b){
@@ -1246,28 +1263,57 @@ $("#scanFile").addEventListener("change",ev=>{
       if(--pend>0)return;
       // se añaden en el orden en que se eligieron, no en el que termina de leerse cada uno
       let ok=0;const bad=[];
-      files.forEach((f,i)=>{if(res[i].length<2)bad.push(f.name);else{addScan(f.name,res[i].map(p=>p[0]),res[i].map(p=>p[1]));ok++;}});
+      files.forEach((f,i)=>{if(res[i].length<2)bad.push(f.name);else{addScan(f.name,res[i].map(p=>p[0]),res[i].map(p=>p[1]),{date:f.lastModified||Date.now()});ok++;}});
       save();renderScanInfo();analyzeNow();renderTable();
       toast(ok?`${ok===1?"Escaneo añadido":ok+" escaneos añadidos"}.`+(bad.length?` Sin pares frecuencia/nivel: ${bad.join(", ")}.`:""):"No se han encontrado pares frecuencia/nivel en el archivo.");
     };
     rd.readAsText(file);
   });
 });
+let scanFind="",scanSort="fecha";
+const scanDate=s=>s.date?new Date(s.date).toLocaleString("es-ES",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"";
+function sortedScans(){
+  const q=scanFind.trim().toLowerCase(),L=state.scans.filter(s=>!q||[s.name,s.place,s.analyzer,s.notes].join(" ").toLowerCase().includes(q));
+  if(scanSort==="nombre")L.sort((a,b)=>a.name.localeCompare(b.name,"es"));
+  else if(scanSort==="rango")L.sort((a,b)=>a.f[0]-b.f[0]);
+  else L.sort((a,b)=>(b.date||0)-(a.date||0));
+  return L;
+}
 function renderScanInfo(){
-  const L=state.scans,act=activeScans();
-  $("#scanList").innerHTML=L.map(s=>`<div class="scrow${s.on?"":" off"}"><input type="checkbox" data-sc="${esc(s.id)}"${s.on?" checked":""} aria-label="Usar ${esc(s.name)} en la coordinación"><i class="sw" style="background:${esc(s.color)}"></i><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span><small>${s.f.length.toLocaleString("es-ES")} pts · ${fmt(s.f[0])}–${fmt(s.f[s.f.length-1])}</small><button class="btn small ghost del" data-del="${esc(s.id)}" title="Quitar este escaneo" aria-label="Quitar ${esc(s.name)}">×</button></div>`).join("");
+  const L=state.scans,act=activeScans(),V=sortedScans();
+  $("#scanTools").hidden=L.length<2;
+  $("#scanList").innerHTML=V.map(s=>{const meta=[scanDate(s),s.analyzer,s.place].filter(Boolean).join(" · ");
+    return `<div class="scrow${s.on?"":" off"}"><input type="checkbox" data-sc="${esc(s.id)}"${s.on?" checked":""} aria-label="Usar ${esc(s.name)} en la coordinación"><i class="sw" style="background:${esc(s.color)}"></i><span class="nm" title="${esc(s.name)}${s.notes?"\n"+esc(s.notes):""}">${esc(s.name)}${meta?`<small class="meta">${esc(meta)}</small>`:""}</span><small>${s.f.length.toLocaleString("es-ES")} pts · ${fmt(s.f[0])}–${fmt(s.f[s.f.length-1])}</small><button class="btn small ghost del" data-edit="${esc(s.id)}" title="Editar los datos de este escaneo" aria-label="Editar ${esc(s.name)}">✎</button><button class="btn small ghost del" data-del="${esc(s.id)}" title="Quitar este escaneo" aria-label="Quitar ${esc(s.name)}">×</button></div>`;}).join("")+(L.length&&!V.length?`<p class="hint">Ningún escaneo coincide con la búsqueda.</p>`:"");
   const np=act.length?scanPeaks().length:0;
   $("#scanInfo").textContent=!L.length?"Sin escaneos cargados.":!act.length?"Ningún escaneo marcado: no se tiene en cuenta ninguno.":
     `Se coordina con ${act.length===1?"1 escaneo":act.length+" escaneos (la suma de todos)"}. ${np?`${np} pico${np>1?"s":""} por encima del umbral de pico.`:"Ningún pico por encima del umbral de pico."}`;
   $("#scanClear").hidden=!L.length;
   $("#legScans").innerHTML=act.map(s=>`<span title="${esc(s.name)}"><i style="background:${esc(s.color)}"></i>${esc(s.name.length>22?s.name.slice(0,21)+"…":s.name)}</span>`).join("");
 }
+$("#scanFind").addEventListener("input",e=>{scanFind=e.target.value;renderScanInfo();});
+$("#scanSort").addEventListener("change",e=>{scanSort=e.target.value;renderScanInfo();});
+let scEdit=null;
+const toLocalInput=ms=>{if(!ms)return "";const d=new Date(ms),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;};
+function openScanEdit(id){
+  const s=state.scans.find(x=>x.id===id);if(!s)return;scEdit=id;
+  $("#scName").value=s.name;$("#scPlace").value=s.place||"";$("#scAn").value=s.analyzer||"";$("#scDate").value=toLocalInput(s.date);$("#scNotes").value=s.notes||"";
+  $("#scModal").hidden=false;$("#scName").focus();$("#scName").select();
+}
+$("#scYes").onclick=()=>{
+  const s=state.scans.find(x=>x.id===scEdit);if(!s){$("#scModal").hidden=true;return;}
+  s.name=$("#scName").value.trim().slice(0,80)||s.name;s.place=$("#scPlace").value.trim().slice(0,80);s.analyzer=$("#scAn").value.trim().slice(0,60);
+  const d=$("#scDate").value?new Date($("#scDate").value).getTime():null;s.date=isFinite(d)?d:null;s.notes=$("#scNotes").value.trim().slice(0,400);
+  $("#scModal").hidden=true;save();renderScanInfo();analyzeNow();
+};
+$("#scNo").onclick=()=>{$("#scModal").hidden=true;};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#scModal").hidden)$("#scModal").hidden=true;});
 $("#scanList").addEventListener("change",e=>{
   const c=e.target.closest("[data-sc]");if(!c)return;
   const s=state.scans.find(x=>x.id===c.dataset.sc);if(!s)return;
   s.on=c.checked;save();renderScanInfo();analyzeNow();renderTable();
 });
 $("#scanList").addEventListener("click",e=>{
+  const ed=e.target.closest("[data-edit]");if(ed){openScanEdit(ed.dataset.edit);return;}
   const b=e.target.closest("[data-del]");if(!b)return;
   const s=state.scans.find(x=>x.id===b.dataset.del);if(!s)return;
   if(!confirm(`¿Quitar el escaneo «${s.name}»? Los datos del escaneo se pierden.`))return;
@@ -1945,7 +1991,8 @@ let cap=null;
 function medianOf(a){const b=Float32Array.from(a).sort();return b.length?b[b.length>>1]:-100;}
 function applyCapture(F,L,label){
   const S=state.scan,had=state.scans.length>0,f0=F[0],f1=F[F.length-1];
-  addScan(label,Array.from(F,x=>Math.round(x)),Array.from(L,x=>Math.round(x*10)/10));
+  const sel=$("#lvSrc").selectedOptions[0];
+  addScan(label,Array.from(F,x=>Math.round(x)),Array.from(L,x=>Math.round(x*10)/10),{date:Date.now(),analyzer:live.src&&sel?sel.textContent.replace(/ \(.*\)$/,""):""});
   const floor=medianOf(L),sug=Math.max(-110,Math.min(-40,Math.round(floor+10)));
   if(!had){S.threshold=sug;S.peak=Math.min(-30,sug+30);}
   if(S.peak<S.threshold)S.peak=S.threshold;
