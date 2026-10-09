@@ -344,6 +344,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     </div>
     <button class="btn small ghost icon" id="zin" aria-label="Acercar" title="Acercar (también con la rueda del ratón o el gesto de pellizco)"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.7 12.7 17.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 8.5h5M8.5 6v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     <button class="btn small ghost icon" id="zout" aria-label="Alejar" title="Alejar"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.7 12.7 17.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 8.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    <button class="btn small ghost icon" id="shotBtn" aria-label="Guardar imagen de la gráfica" title="Guarda la gráfica como una imagen PNG (vista actual, escaneos y frecuencias)"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5h2.6l1.2-2h6.4l1.2 2H17v9H3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="11" r="2.8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
     <button class="btn small ghost" id="zfit" title="Encuadra las portadoras coordinadas; púlsalo otra vez para ver las bandas enteras (doble clic en la gráfica hace lo mismo)">Ajustar vista</button>
   </div>
   <div class="freqbar" id="freqBar" aria-live="off"></div>
@@ -1407,6 +1408,36 @@ miniCv.addEventListener("pointermove",e=>{if(!miniDrag)return;const a=miniF(e)-m
 miniCv.addEventListener("pointerup",()=>{miniDrag=null;});
 miniCv.addEventListener("pointercancel",()=>{miniDrag=null;});
 new ResizeObserver(()=>drawMini()).observe(miniCv);
+/* Imagen de la gráfica: la propia gráfica con una cabecera (proyecto, vista, escaneos usados y fecha), en PNG. */
+function chartImage(){
+  const dpr=cv.width/Math.max(1,cv.getBoundingClientRect().width)||1,hd=Math.round(58*dpr),W=cv.width,H=cv.height+hd;
+  const c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d");
+  g.fillStyle=css("--panel")||"#fff";g.fillRect(0,0,W,H);
+  const p=curProject(),act=activeScans(),d=new Date();
+  g.fillStyle=css("--ink");g.textBaseline="top";g.font=`600 ${Math.round(18*dpr)}px "Barlow",sans-serif`;
+  g.fillText((p&&p.name)||"Coordinación",Math.round(14*dpr),Math.round(8*dpr));
+  g.fillStyle=css("--muted");g.font=`${Math.round(13*dpr)}px "Barlow",sans-serif`;
+  const tx=`Vista ${fmt(view.a)} – ${fmt(view.b)} MHz · ${analysis.C.length} frecuencias${act.length?" · escaneos: "+act.map(s=>s.name).join(", "):""} · ${d.toLocaleString("es-ES")}`;
+  g.fillText(tx.length>180?tx.slice(0,179)+"…":tx,Math.round(14*dpr),Math.round(34*dpr));
+  g.drawImage(cv,0,hd);
+  return c;
+}
+async function saveChartImage(){
+  draw();
+  const c=chartImage(),p=curProject();
+  const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+  if(!blob){toast("No se ha podido crear la imagen.");return;}
+  if(diskReady()){
+    try{
+      const b64=await new Promise((ok,ko)=>{const rd=new FileReader();rd.onload=()=>ok(String(rd.result));rd.onerror=ko;rd.readAsDataURL(blob);});
+      const j=await diskApi("/files",{kind:"imagen",name:p?p.name:"grafica",content:b64,open:true});
+      toast("Imagen guardada en "+j.path);return;
+    }catch(e){/* sin puente: se descarga */}
+  }
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=(p?p.name:"grafica").replace(/[\\/:*?"<>|]+/g," ").trim()+".png";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Imagen descargada.");
+}
+$("#shotBtn").onclick=saveChartImage;
 function fAt(e){const r=cv.getBoundingClientRect();return view.a+(e.clientX-r.left-PADL)/(r.width-PADL-PADR)*(view.b-view.a);}
 function zoom(center,k){
   const [blo,bhi]=bounds(),maxSpan=Math.max(600000,(bhi-blo)*1.5),span=view.b-view.a;

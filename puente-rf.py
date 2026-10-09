@@ -29,7 +29,7 @@ desde el propio puente se rellena sola. Sin clave nadie puede leer ni cambiar na
 Solo biblioteca estándar de Python 3.8+.
 """
 import argparse, errno, ipaddress, json, shutil, os, queue, random, re, secrets, signal, socket, sys, threading, time, urllib.request, webbrowser
-import subprocess, ssl, unicodedata, hashlib, platform, plistlib
+import subprocess, ssl, unicodedata, hashlib, platform, plistlib, base64
 from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -1157,6 +1157,13 @@ def write_atomic(path, data):
     os.replace(tmp, path)
 
 
+def write_atomic_bytes(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
 PROJ_ID = re.compile(r"^[a-z0-9]{3,32}$")
 
 
@@ -1235,12 +1242,21 @@ def reveal(path):
 def save_file(kind, name, content, open_it):
     """Guarda un archivo de texto en Documentos/Coordinador RF/<tipo>. Los informes (HTML) se abren en el navegador
     del sistema para imprimirlos o guardarlos como PDF; los demás se muestran en el Finder."""
-    sub = {"informe": "Informes", "registro": "Registros"}.get(kind)
+    sub = {"informe": "Informes", "registro": "Registros", "imagen": "Imágenes"}.get(kind)
     if not sub or not isinstance(content, str):
         raise ValueError("archivo no válido")
-    ext = ".html" if kind == "informe" else ".csv"
+    ext = {"informe": ".html", "imagen": ".png"}.get(kind, ".csv")
     path = os.path.join(user_dir(sub), f"{slug(name, kind)}-{time.strftime('%Y%m%d-%H%M%S')}{ext}")
-    write_atomic(path, content)
+    if kind == "imagen":   # la imagen llega como PNG en base64 (con o sin el prefijo data:)
+        try:
+            data = base64.b64decode(content.split(",", 1)[-1], validate=True)
+        except (ValueError, TypeError):
+            raise ValueError("imagen no válida")
+        if not data.startswith(b"\x89PNG\r\n\x1a\n") or len(data) > MAX_BODY:
+            raise ValueError("imagen no válida")
+        write_atomic_bytes(path, data)
+    else:
+        write_atomic(path, content)
     if open_it:
         if kind == "informe":
             webbrowser.open("file://" + path)
@@ -1722,7 +1738,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({"ok": True})
             if path == "/reveal":
                 kind = (body or {}).get("kind")
-                reveal(user_dir({"projects": "Proyectos", "informes": "Informes", "registros": "Registros"}.get(kind, "Proyectos")))
+                reveal(user_dir({"projects": "Proyectos", "informes": "Informes", "registros": "Registros", "imagenes": "Imágenes"}.get(kind, "Proyectos")))
                 return self.reply({"ok": True})
             if path == "/files":
                 return self.reply({"ok": True, "path": save_file(body.get("kind"), body.get("name"), body.get("content"), bool(body.get("open")))})

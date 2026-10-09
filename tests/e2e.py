@@ -1182,7 +1182,26 @@ def t_vista(B):
         ctx.close()
 
 
-BLOQUES = {"vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_imagen(B):
+    print("Guardar la gráfica como imagen")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        coordinate(pg)
+        r = pg.evaluate("()=>{const c=chartImage();return {w:c.width,h:c.height,cw:cv.width,ch:cv.height}}")
+        check("la imagen es la gráfica con una cabecera encima", r["w"] == r["cw"] and r["h"] > r["ch"], r)
+        pg.click("#shotBtn")
+        pg.wait_for_function("()=>/Imagen guardada/.test(document.querySelector('#toast').textContent)", timeout=8000)
+        files = glob.glob(os.path.join(br["docs"], "Imágenes", "*.png"))
+        data = open(files[0], "rb").read() if files else b""
+        check("se guarda un PNG en Documentos/Coordinador RF/Imágenes y se avisa", len(files) == 1 and data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) > 3000, [len(files), len(data)])
+        # el puente rechaza lo que no es una imagen
+        r = pg.evaluate("""async()=>{try{await diskApi('/files',{kind:'imagen',name:'x',content:btoa('no es un png'),open:false});return 'aceptada'}catch(e){return e.message}}""")
+        check("el puente no acepta como imagen lo que no es un PNG", "imagen no válida" in r, r)
+        ctx.close()
+
+
+BLOQUES = {"imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)
