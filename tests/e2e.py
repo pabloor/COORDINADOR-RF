@@ -1,6 +1,7 @@
 """Pruebas de extremo a extremo de Coordinador RF: puente real + interfaz en Chromium (Playwright).
 Cada bloque arranca su propio puente con una carpeta de usuario temporal, así que no se afectan entre sí.
 Uso:  python3 tests/e2e.py [bloque ...]      (sin argumentos, todos).   PW_CHROMIUM=/ruta/al/chromium si hace falta."""
+import types
 import contextlib, functools, glob, hashlib, http.server, importlib.util, json, os, re, shutil, socket, socketserver, subprocess, sys, tempfile, threading, time, urllib.request
 from playwright.sync_api import sync_playwright
 
@@ -1331,7 +1332,58 @@ def t_recorrido(B):
         ctx.close()
 
 
-BLOQUES = {"recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_buscar_actualizaciones(B):
+    print("Buscar actualizaciones a mano")
+    m = _puente()
+    rel = tempfile.mkdtemp()
+    with static_server(rel) as port:
+        def pon(tag):
+            json.dump({"tag_name": tag, "html_url": "https://github.com/pabloor/COORDINADOR-RF/releases/tag/" + tag, "body": "", "assets": []}, open(os.path.join(rel, "latest.json"), "w"))
+        pon("v" + m.VERSION)
+        with bridge(env={m.UPDATE_TEST: f"http://127.0.0.1:{port}/latest.json"}) as br:
+            ctx, pg = B.page(br["url"])
+            pg.wait_for_function("()=>diskReady()", timeout=10000)
+            pg.evaluate("()=>buscarActualizaciones()")
+            pg.wait_for_function("()=>/al día/.test(document.getElementById('toast').textContent)", timeout=8000)
+            check("sin versión nueva dice que está al día", pg.evaluate("()=>document.getElementById('updBar').hidden"))
+            pon("v99.0")
+            pg.evaluate("()=>{localStorage.setItem('coordinador-rf.aviso','99.0')}")
+            pg.evaluate("()=>buscarActualizaciones()")
+            pg.wait_for_function("()=>!document.getElementById('updBar').hidden", timeout=8000)
+            check("con versión nueva muestra el aviso aunque se hubiera descartado", pg.evaluate("()=>/99\\.0/.test(document.getElementById('updTxt').textContent)"))
+        ctx.close()
+    # el menú de la app de Mac: se añade debajo de «Acerca de» con un AppKit de mentira
+    class Item:
+        def __init__(s, t): s.t = t; s.target = None
+        def setTarget_(s, x): s.target = x
+    class Sub:
+        def __init__(s): s.items = [Item("Acerca de Coordinador RF"), Item("Servicios")]
+        def numberOfItems(s): return len(s.items)
+        def indexOfItemWithTitle_(s, t): return next((i for i, x in enumerate(s.items) if x.t == t), -1)
+        def insertItem_atIndex_(s, it, i): s.items.insert(i, it)
+    sub = Sub()
+    class Princ:
+        def numberOfItems(s): return 1
+        def itemAtIndex_(s, i): return types.SimpleNamespace(submenu=lambda: sub)
+    class NSMenuItem:
+        @staticmethod
+        def alloc(): return NSMenuItem()
+        def initWithTitle_action_keyEquivalent_(s, t, a, k): return Item(t)
+    class NSObject:
+        @classmethod
+        def alloc(c): return c()
+        def init(s): return s
+    ak = types.SimpleNamespace(NSObject=NSObject, NSMenuItem=NSMenuItem, NSApp=types.SimpleNamespace(mainMenu=lambda: Princ()))
+    objc = types.ModuleType("objc"); objc.selector = lambda f, signature=None: f
+    sys.modules["objc"] = objc
+    try:
+        m.add_app_menu_update(webview_module=types.SimpleNamespace(windows=[]), appkit=ak, helper=types.SimpleNamespace(callAfter=lambda f: f()))
+    finally:
+        sys.modules.pop("objc", None)
+    check("«Buscar actualizaciones…» queda justo debajo de «Acerca de»", [x.t for x in sub.items][:2] == ["Acerca de Coordinador RF", "Buscar actualizaciones…"], [x.t for x in sub.items])
+
+
+BLOQUES = {"buscar": t_buscar_actualizaciones, "recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

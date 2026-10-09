@@ -71,6 +71,7 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
 - **Escaneos con datos:** cada escaneo guarda fecha, lugar, analizador y notas (editables con ✎); la lista tiene búsqueda y orden.
 - **Vista de la gráfica:** campos de Inicio, Centro, Fin y Ancho y franja con el espectro completo; botón para guardar la gráfica como imagen PNG (carpeta *Imágenes* de Coordinador RF).
 - **Perfil del equipo** con los modos Robusto, Medio y Cantidad lado a lado, y **Revisar proyecto** con los problemas por canal y avisos generales.
+- **Buscar actualizaciones** a mano: en Mac, en el menú con el nombre de la app, debajo de «Acerca de».
 - **Recorrido de bienvenida** la primera vez; se reabre con «?» o desde el menú *Proyecto*.
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).
 

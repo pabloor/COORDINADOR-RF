@@ -1681,6 +1681,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({"interfaces": interface_list()})
         elif path == "/update":
             self.reply(check_update())
+        elif path == "/update/refresh":  # «Buscar actualizaciones» a mano: ignora lo guardado
+            _UPD["data"] = None
+            self.reply(check_update())
         elif path == "/update/status":
             with UPD_LOCK:
                 self.reply(dict(UPD_ST))
@@ -1905,6 +1908,46 @@ class WindowApi:
             webview.windows[0].set_title("Coordinador RF" + (f" — {n}" if n else ""))
 
 
+def add_app_menu_update(webview_module=None, appkit=None, helper=None):
+    """Pone «Buscar actualizaciones…» en el menú con el nombre de la app (el primero de la barra de macOS), debajo de «Acerca de».
+    pywebview no deja tocar ese menú, así que se añade con AppKit una vez abierta la ventana. Devuelve True si lo ha puesto."""
+    wv = webview_module
+    if wv is None:
+        import webview as wv
+    if appkit is None:
+        import AppKit as appkit
+    if helper is None:
+        from PyObjCTools import AppHelper as helper
+    import objc
+
+    class Buscador(appkit.NSObject):
+        def buscar_(self, sender):
+            if wv.windows:
+                wv.windows[0].evaluate_js("buscarActualizaciones()")
+
+    destino = Buscador.alloc().init()
+    _APP_MENU_KEEP.append(destino)
+    hecho = []
+
+    def poner():
+        principal = appkit.NSApp.mainMenu()
+        if principal is None or principal.numberOfItems() < 1:
+            return
+        sub = principal.itemAtIndex_(0).submenu()
+        if sub is None or sub.indexOfItemWithTitle_("Buscar actualizaciones…") >= 0:
+            return
+        item = appkit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Buscar actualizaciones…", objc.selector(Buscador.buscar_, signature=b"v@:@"), "")
+        item.setTarget_(destino)
+        sub.insertItem_atIndex_(item, 1 if sub.numberOfItems() > 1 else sub.numberOfItems())
+        hecho.append(1)
+
+    helper.callAfter(poner)
+    return True
+
+
+_APP_MENU_KEEP = []
+
+
 def project_menu(webview_module=None, menu_module=None):
     """Menú «Proyecto» de la barra de menús de macOS. Cada opción llama a una función de la página (menuProyecto,
     menuTexto, menuCargar). Copiar y cargar archivos se hacen aquí porque el portapapeles y el selector de archivos del
@@ -2064,6 +2107,13 @@ def run_window(url):
         icon = os.path.join(HERE, "icono.png")
         if os.path.isfile(icon):
             kw["icon"] = icon
+        if sys.platform == "darwin" and api is not None:
+            def tras_abrir():
+                try:
+                    add_app_menu_update(webview)
+                except Exception as e:
+                    print(f"No se ha podido añadir «Buscar actualizaciones» al menú de la app ({e}).", flush=True)
+            kw["func"] = tras_abrir
         try:
             webview.start(**kw)
         except TypeError:  # versiones antiguas de pywebview

@@ -2768,6 +2768,19 @@ async function checkUpdate(){
     updInfo=j;showUpdBar();
   }catch(e){}
 }
+/* «Buscar actualizaciones…» del menú de la app (Mac): comprueba ahora mismo y responde siempre. */
+async function buscarActualizaciones(){
+  if(updBusy)return;
+  if(!diskReady()){toast("No se puede comprobar: la app no está conectada al puente.");return;}
+  toast("Buscando actualizaciones…");
+  try{
+    const j=await diskApi("/update/refresh");
+    if(j.error){toast("No se ha podido comprobar si hay una versión nueva. Revisa la conexión a internet.");return;}
+    if(!j.newer){toast(`Estás al día: la versión ${j.current} es la última.`);return;}
+    try{localStorage.removeItem("coordinador-rf.aviso");}catch(e){}
+    updInfo=j;showUpdBar();toast(`Hay una versión nueva: ${j.latest}.`);
+  }catch(e){toast("No se ha podido comprobar si hay una versión nueva.");}
+}
 setInterval(checkUpdate,15*60*1000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkUpdate();});
 $("#updGo").onclick=async()=>{
