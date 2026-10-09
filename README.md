@@ -72,6 +72,7 @@ certificado propio (ver *Firma estable* más abajo). En Windows el aviso lleva a
 - **Vista de la gráfica:** campos de Inicio, Centro, Fin y Ancho y franja con el espectro completo; botón para guardar la gráfica como imagen PNG (carpeta *Imágenes* de Coordinador RF).
 - **Perfil del equipo** con los modos Robusto, Medio y Cantidad lado a lado, y **Revisar proyecto** con los problemas por canal y avisos generales.
 - **Captura por tramos:** en *Espectro en vivo*, «Resolución» Alta (≈ 50 kHz entre puntos) o Máxima (≈ 25 kHz) reparte el rango en tramos consecutivos, barre cada uno con todos los puntos del analizador y los une en un solo escaneo (hasta 60 tramos; se puede cancelar y guarda lo hecho). Con el AD600 baja la resolución a 50 kHz mientras captura.
+- **Receptores en una ventana flotante:** el botón *Receptores* abre una ventana que se mueve arrastrando su barra y cambia de tamaño, no desplaza la tabla y recuerda su posición.
 - **Buscar actualizaciones** a mano: en Mac, en el menú con el nombre de la app, debajo de «Acerca de».
 - **Recorrido de bienvenida** la primera vez; se reabre con «?» o desde el menú *Proyecto*.
 - **Diagnóstico:** botón que reúne versión, estado y registros para explicar un fallo (no incluye la clave del puente).

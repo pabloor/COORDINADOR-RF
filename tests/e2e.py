@@ -1415,7 +1415,34 @@ def t_captura_tramos(B):
         ctx.close()
 
 
-BLOQUES = {"tramos": t_captura_tramos, "buscar": t_buscar_actualizaciones, "recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_ventana_receptores(B):
+    print("Ventana flotante de receptores")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="coord"]')
+        y0 = pg.evaluate("()=>document.getElementById('tbody').getBoundingClientRect().top")
+        pg.click("#netToggle")
+        r = pg.evaluate("""()=>{const p=document.getElementById('netPanel'),b=p.getBoundingClientRect();
+          return {pos:getComputedStyle(p).position,vis:!p.hidden,y:document.getElementById('tbody').getBoundingClientRect().top,
+                  dentro:b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight+1,w:b.width,h:b.height}}""")
+        check("se abre como ventana flotante dentro de la pantalla", r["pos"] == "fixed" and r["vis"] and r["dentro"], r)
+        check("la tabla no se mueve al abrirla (no ocupa sitio)", abs(r["y"] - y0) < 1, (r["y"], y0))
+        b0 = pg.evaluate("()=>{const b=document.getElementById('netPanel').getBoundingClientRect();return [b.left,b.top]}")
+        h = pg.evaluate("()=>{const b=document.getElementById('netHead').getBoundingClientRect();return [b.left+40,b.top+10]}")
+        pg.mouse.move(h[0], h[1]); pg.mouse.down(); pg.mouse.move(h[0] - 200, h[1] - 40, steps=5); pg.mouse.up()
+        b1 = pg.evaluate("()=>{const b=document.getElementById('netPanel').getBoundingClientRect();return [b.left,b.top]}")
+        check("se mueve arrastrando la barra", abs((b0[0] - b1[0]) - 200) < 3 and abs((b0[1] - b1[1]) - 40) < 3, (b0, b1))
+        pg.click("#netClose")
+        check("el botón Cerrar la oculta", pg.evaluate("()=>document.getElementById('netPanel').hidden"))
+        pg.click("#netToggle", force=True)
+        b2 = pg.evaluate("()=>{const b=document.getElementById('netPanel').getBoundingClientRect();return [b.left,b.top]}")
+        check("recuerda dónde la dejaste", abs(b2[0] - b1[0]) < 3 and abs(b2[1] - b1[1]) < 3, (b1, b2))
+        pg.evaluate("()=>document.getElementById('netToggle').click()")
+        check("el botón Receptores también la cierra", pg.evaluate("()=>document.getElementById('netPanel').hidden"))
+        ctx.close()
+
+
+BLOQUES = {"ventana": t_ventana_receptores, "tramos": t_captura_tramos, "buscar": t_buscar_actualizaciones, "recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

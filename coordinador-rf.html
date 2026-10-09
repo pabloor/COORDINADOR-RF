@@ -181,6 +181,9 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
 .exp[data-v=off]{border-color:var(--muted)}
 .s-ok{color:var(--ok)}.s-warn{color:var(--im5)}.s-bad{color:var(--im3)}.s-idle{color:var(--muted)}
 .netp{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 14px}
+.netp.float{position:fixed;z-index:15;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 36px rgba(0,0,0,.35);overflow:auto;resize:both;min-width:420px;min-height:220px;max-width:98vw;max-height:96vh;padding-top:0}
+.netp-h{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;margin:0 -14px 8px;padding:8px 14px;background:var(--raise);border-bottom:1px solid var(--line);cursor:move;user-select:none;touch-action:none}
+.netp-h b{flex:1}
 .netrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end}
 .netrow label.f{margin:0;min-width:200px}
 .netp code{background:var(--raise);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:13px}
@@ -392,7 +395,8 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
       <button class="btn small" id="netToggle" title="Conectar con el puente, buscar y añadir receptores Shure y Sennheiser">Receptores</button>
       <button class="btn small primary" id="sendAll" title="Programa en los receptores de red las frecuencias de los canales enlazados">Enviar a receptores</button>
     </div>
-  <div id="netPanel" class="netp" hidden>
+  <div id="netPanel" class="netp float" hidden role="dialog" aria-label="Receptores">
+    <div class="netp-h" id="netHead"><b>Receptores</b><span class="hint" style="margin:0">Arrastra esta barra para mover la ventana; el borde inferior derecho cambia su tamaño</span><button class="btn small" id="netClose" aria-label="Cerrar la ventana de receptores">Cerrar</button></div>
     <div class="netrow">
       <label class="f">Dirección del puente<input type="text" id="netUrl" spellcheck="false"></label>
       <label class="f">Clave<input type="text" id="netKey" autocomplete="off" spellcheck="false"></label>
@@ -2416,7 +2420,27 @@ $("#netFound").addEventListener("click",async e=>{
   save();renderNetDevs();$("#netFound").innerHTML=`<p class="hint s-ok">Añadidos ${pick.length} receptores.</p>`;
   if(net.es)await netPushDevices(true);else await netConnect();
 });
-$("#netToggle").addEventListener("click",()=>{const p=$("#netPanel");p.hidden=!p.hidden;if(!p.hidden)loadIfaces();});
+/* Ventana flotante de receptores: no empuja la tabla, se mueve y cambia de tamaño, y recuerda dónde la dejaste. */
+const NETWIN_KEY="coordinador-rf.ventana-receptores";
+function netWinPlace(){
+  const p=$("#netPanel");let g=null;try{g=JSON.parse(localStorage.getItem(NETWIN_KEY));}catch(e){}
+  const W=innerWidth,H=innerHeight;
+  const w=Math.max(420,Math.min(W-16,g&&g.w||Math.min(920,W*.7))),h=Math.max(220,Math.min(H-16,g&&g.h||Math.min(560,H*.75)));
+  const x=Math.max(0,Math.min(W-w,g&&g.x!=null?g.x:W-w-24)),y=Math.max(0,Math.min(H-h-8,g&&g.y!=null?g.y:Math.round($("#netToggle").getBoundingClientRect().bottom+8)));
+  Object.assign(p.style,{left:x+"px",top:y+"px",width:w+"px",height:h+"px"});
+}
+function netWinSave(){const p=$("#netPanel"),r=p.getBoundingClientRect();try{localStorage.setItem(NETWIN_KEY,JSON.stringify({x:Math.round(r.left),y:Math.round(r.top),w:Math.round(r.width),h:Math.round(r.height)}));}catch(e){}}
+function netWinToggle(on){const p=$("#netPanel");p.hidden=on===undefined?!p.hidden:!on;if(!p.hidden){netWinPlace();loadIfaces();}}
+$("#netToggle").addEventListener("click",()=>netWinToggle());
+$("#netClose").addEventListener("click",()=>netWinToggle(false));
+{let d=null;const h=$("#netHead");
+  h.addEventListener("pointerdown",e=>{if(e.target.closest("button"))return;const r=$("#netPanel").getBoundingClientRect();d={dx:e.clientX-r.left,dy:e.clientY-r.top};h.setPointerCapture(e.pointerId);});
+  h.addEventListener("pointermove",e=>{if(!d)return;const p=$("#netPanel");
+    p.style.left=Math.max(0,Math.min(innerWidth-80,e.clientX-d.dx))+"px";p.style.top=Math.max(0,Math.min(innerHeight-40,e.clientY-d.dy))+"px";});
+  h.addEventListener("pointerup",()=>{if(d){d=null;netWinSave();}});
+  if(window.ResizeObserver){let t=0;new ResizeObserver(()=>{clearTimeout(t);t=setTimeout(()=>{if(!$("#netPanel").hidden)netWinSave();},300);}).observe($("#netPanel"));}
+  addEventListener("resize",()=>{if(!$("#netPanel").hidden)netWinPlace();});
+}
 
 /* ---------- Canales de receptor ---------- */
 function rxList(){
