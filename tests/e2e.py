@@ -1383,7 +1383,39 @@ def t_buscar_actualizaciones(B):
     check("«Buscar actualizaciones…» queda justo debajo de «Acerca de»", [x.t for x in sub.items][:2] == ["Acerca de Coordinador RF", "Buscar actualizaciones…"], [x.t for x in sub.items])
 
 
-BLOQUES = {"buscar": t_buscar_actualizaciones, "recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
+def t_captura_tramos(B):
+    print("Captura por tramos (más puntos)")
+    with bridge() as br:
+        ctx, pg = B.page(br["url"])
+        pg.click('[data-tab="live"]')
+        pg.select_option("#lvSrc", "sim")
+        pg.evaluate("()=>{state.live.start=470000;state.live.stop=510000;state.live.points=450;state.scans=[];save();syncLiveControls()}")
+        pg.click("#lvConn")
+        pg.wait_for_function("()=>live.f&&live.f.length>10&&live.n>3", timeout=20000)
+        pg.select_option("#lvCapDur", "0")
+        pg.select_option("#lvCapRes", "50")
+        pg.click("#lvSave")
+        pg.wait_for_function("()=>state.scans.length===1", timeout=30000)
+        r = pg.evaluate("""()=>{const s=state.scans[0],f=s.f;let mx=0;for(let i=1;i<f.length;i++)mx=Math.max(mx,f[i]-f[i-1]);
+          return {n:f.length,a:f[0],b:f[f.length-1],mx,name:s.name,sorted:f.every((x,i)=>!i||x>f[i-1]),rng:[state.live.start,state.live.stop]}}""")
+        check("el escaneo cubre todo el rango con separación ≈ 50 kHz o menos y más puntos que un barrido", r["n"] > 700 and r["a"] <= 470100 and r["b"] >= 509900 and r["mx"] <= 60 and r["sorted"], r)
+        check("el nombre indica los tramos", "2 tramos" in r["name"], r["name"])
+        check("el rango del analizador se restaura", r["rng"] == [470000, 510000], r["rng"])
+        pg.evaluate("()=>{state.live.stop=700000;save();syncLiveControls()}")
+        pg.select_option("#lvCapRes", "25")
+        pg.click("#lvSave")
+        pg.wait_for_function("()=>/tramo \\d+ de/.test(document.getElementById('lvSave').textContent)", timeout=10000)
+        pg.click("#lvSave")
+        pg.wait_for_function("()=>!/Capturando/.test(document.getElementById('lvSave').textContent)", timeout=20000)
+        n = pg.evaluate("()=>state.scans.length")
+        check("cancelar guarda lo capturado como escaneo incompleto o no guarda nada", n in (1, 2), n)
+        if n == 2:
+            check("la captura cancelada se marca como incompleta", "incompleta" in pg.evaluate("()=>state.scans[1].name"))
+        check("tras cancelar el rango también se restaura", pg.evaluate("()=>[state.live.start,state.live.stop]") == [470000, 700000])
+        ctx.close()
+
+
+BLOQUES = {"tramos": t_captura_tramos, "buscar": t_buscar_actualizaciones, "recorrido": t_recorrido, "revisar": t_revisar, "perfil": t_perfil, "imagen": t_imagen, "vista": t_vista, "escaneos": t_escaneos, "exportar_wwb": t_exportar_wwb, "umbrales": t_umbrales, "importar_wwb": t_importar_wwb, "interferencias": t_interferencias, "coordinacion": t_coordinacion, "menu": t_menu_proyecto, "shure0": t_shure_sin_medidores, "axient": t_shure_axient, "captura": t_captura, "grafica": t_grafica_red, "proyectos": t_proyectos, "receptores": t_receptores, "alertas": t_alertas_informe, "ad600": t_ad600, "actualizacion": t_actualizacion}
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(BLOQUES)

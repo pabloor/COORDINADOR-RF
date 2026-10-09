@@ -451,6 +451,7 @@ html[data-nativo] #projSel,html[data-nativo] details.projbox,html[data-nativo] .
     <label class="chk"><input type="checkbox" id="lvAvg">Promedio</label>
     <button class="btn small" id="lvReset">Borrar máximo</button>
     <label class="f" id="lvCapW">Capturar durante<select id="lvCapDur"><option value="0">Solo el barrido actual</option><option value="10">10 s (máximo)</option><option value="30">30 s (máximo)</option><option value="60">1 min (máximo)</option><option value="120">2 min (máximo)</option></select></label>
+    <label class="f" id="lvCapResW" title="Con «Alta» o «Máxima» la captura se hace por tramos consecutivos: el analizador barre cada uno con todos sus puntos y se unen en un solo escaneo. Tarda más, pero separa mejor las señales estrechas.">Resolución<select id="lvCapRes"><option value="0">Normal (el rango tal cual)</option><option value="50">Alta (≈ 50 kHz entre puntos, por tramos)</option><option value="25">Máxima (≈ 25 kHz entre puntos, por tramos)</option></select></label>
     <button class="btn small primary" id="lvSave" title="Guarda lo que ve el analizador como escaneo del sitio: la coordinación evitará esas frecuencias">Capturar como escaneo</button>
     <button class="btn small" id="lvDiag" title="Reúne versión, estado y registros para poder explicar un fallo">Diagnóstico</button>
     <span class="monctl">
@@ -2027,8 +2028,80 @@ function capFinish(){
   const d=new Date(),hm=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   applyCapture(live.f,c.dur?live.max:live.l,`Captura en vivo ${hm}`+(c.dur?` (máximo de ${c.dur} s)`:""));
 }
+/* Captura por tramos: reparte el rango en tramos consecutivos de (puntos × separación), barre cada uno (un barrido o el máximo de «Capturar durante»)
+   y los une en un solo escaneo. Con el AD600, que da la resolución con su RBW, solo se baja el RBW a 50 kHz mientras dura la captura. */
+const SEG_MAX=60;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function segPlan(A,B,P,stepKHz){
+  const per=Math.max(1,(P-1)*stepKHz);let n=Math.ceil((B-A)/per);
+  if(n>SEG_MAX){n=SEG_MAX;}
+  return {n,w:(B-A)/Math.max(1,n),step:Math.max(stepKHz,(B-A)/Math.max(1,n)/(P-1))};
+}
+async function waitSweeps(c,segA,segB,k,tol,ms){
+  const n0=live.n,t0=performance.now();let ok=0,last=n0;
+  while(!c.stop&&performance.now()-t0<ms){
+    await sleep(40);
+    if(live.n===last)continue;last=live.n;
+    const F=live.f;if(F&&F.length>1&&Math.abs(F[0]-segA)<=tol&&Math.abs(F[F.length-1]-segB)<=tol&&++ok>=k)return true;
+  }
+  return false;
+}
+async function captureSegments(stepKHz,dur){
+  const L=state.live,src=L.source,sv={start:L.start,stop:L.stop,points:L.points,rbw:L.adRbw};
+  const c=cap={seg:true,stop:false,dur};
+  const btn=$("#lvSave");
+  let F=[],V=[],plan=null,done=0;
+  try{
+    if(src==="ad600"){
+      L.adRbw=50;live.src&&live.src.setRange();btn.textContent="Capturando con 50 kHz… (pulsa para cancelar)";
+      await waitSweeps(c,L.start,L.stop,2,(L.stop-L.start)*.5,45000);live.max=null;
+      if(dur){live.max=Float32Array.from(live.l);const t0=performance.now();while(!c.stop&&performance.now()-t0<dur*1000)await sleep(200);}
+      else await sleep(300);
+      if(live.f&&live.l){F=Array.from(live.f);V=Array.from(dur?live.max:live.l);}
+      plan={n:1};done=1;
+    }else{
+      const P=Math.max(16,live.f?live.f.length:L.points);
+      plan=segPlan(sv.start,sv.stop,P,stepKHz);
+      for(let i=0;i<plan.n&&!c.stop;i++){
+        const a=sv.start+i*plan.w-(i?plan.step:0),b=sv.start+(i+1)*plan.w;
+        L.start=a;L.stop=b;live.max=null;live.src&&live.src.setRange();
+        btn.textContent=`Capturando tramo ${i+1} de ${plan.n}… (pulsa para cancelar)`;
+        const tol=Math.max((b-a)*.25,plan.step*2);
+        const got=await waitSweeps(c,a,b,2,tol,15000);
+        if(c.stop)break;
+        if(!got){toast(`El analizador no respondió en el tramo ${i+1} (${fmt(a)}–${fmt(b)} MHz): se deja ese hueco.`);continue;}
+        live.max=Float32Array.from(live.l);
+        if(dur){const t0=performance.now();while(!c.stop&&performance.now()-t0<dur*1000)await sleep(100);}
+        if(live.f&&live.l){const arr=dur?live.max:live.l;for(let k=0;k<live.f.length;k++){F.push(live.f[k]);V.push(arr[k]);}done++;}
+      }
+    }
+  }finally{
+    L.start=sv.start;L.stop=sv.stop;L.points=sv.points;L.adRbw=sv.rbw;
+    cap=null;btn.textContent="Capturar como escaneo";
+    try{if(live.src)live.src.setRange();}catch(e){}
+    live.max=null;syncLiveControls();save();
+  }
+  if(!F.length){toast("El analizador no ha enviado datos durante la captura.");return;}
+  const ix=F.map((_,i)=>i).sort((x,y)=>F[x]-F[y]),oF=[],oV=[];
+  const eps=(plan.step||stepKHz)*.5;
+  for(const i of ix){
+    if(oF.length&&F[i]-oF[oF.length-1]<eps){if(V[i]>oV[oV.length-1])oV[oV.length-1]=V[i];}
+    else{oF.push(F[i]);oV.push(V[i]);}
+  }
+  const d=new Date(),hm=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  const partial=c.stop&&plan.n>1&&done<plan.n;
+  applyCapture(Float64Array.from(oF),Float32Array.from(oV),`Captura en vivo ${hm} (${plan.n>1?plan.n+" tramos":"50 kHz"}${dur?`, máximo de ${dur} s`:""})`+(partial?" · incompleta":""));
+  if(partial)toast(`Captura cancelada: se guardaron ${done} de ${plan.n} tramos (${fmt(oF[0])}–${fmt(oF[oF.length-1])} MHz).`);
+}
 $("#lvSave").addEventListener("click",()=>{
+  if(cap&&cap.seg){cap.stop=true;return;}
   if(cap){capFinish();return;}
+  const res=parseInt($("#lvCapRes").value)||0;
+  if(res&&live.src){
+    if(!live.f||!live.l){toast("Todavía no hay datos del analizador. Conéctalo primero.");return;}
+    captureSegments(res,parseInt($("#lvCapDur").value)||0);
+    return;
+  }
   if(!live.f||!live.l){toast("Todavía no hay datos del analizador. Conéctalo primero.");return;}
   const dur=parseInt($("#lvCapDur").value)||0;
   if(!dur){cap={dur:0};capFinish();return;}
